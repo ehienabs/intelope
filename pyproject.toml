@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intelope"
+version = "0.1.0"
+description = "Train small personal LLMs on your own data — privately, locally."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+keywords = ["llm", "fine-tuning", "privacy", "local-ai", "personal-ai"]
+
+dependencies = [
+  # CLI
+  "typer[all]>=0.12",
+  "rich>=13",
+  # Data ingestion
+  "pymupdf>=1.24",           # PDF
+  "ebooklib>=0.18",          # EPUB
+  "beautifulsoup4>=4.12",    # HTML bookmarks + EPUB cleanup
+  "pyyaml>=6",               # Frontmatter
+  # ML core
+  "torch>=2.2",
+  "transformers>=4.40",
+  "datasets>=2.18",
+  "peft>=0.10",              # LoRA
+  "trl>=0.8",                # SFTTrainer
+  "accelerate>=0.29",
+  # UI
+  "gradio>=4.0",
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+fast = [
+  "unsloth[colab-new]",      # 2-5x faster training
+]
+dev = [
+  "pytest>=8",
+  "black>=24",
+  "ruff>=0.4",
+  "mypy>=1.9",
+]
+
+[project.scripts]
+intelope = "cli:app"
+
+[tool.setuptools.packages.find]
+include = ["ingestion*", "pipeline*", "ui*"]
+
+[tool.setuptools]
+py-modules = ["cli"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.black]
+line-length = 100
