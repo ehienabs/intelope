@@ -17,7 +17,7 @@ from rich import print as rprint
 
 app = typer.Typer(
     name="intelope",
-    help="Train small personal LLMs on your own data — privately, locally.",
+    help="Train small personal LLMs on your own data.",
     add_completion=False,
 )
 console = Console()
@@ -28,7 +28,7 @@ def start(
     host: str = typer.Option("127.0.0.1", help="Host to bind"),
     port: int = typer.Option(7860, help="Port to serve on"),
 ):
-    """Launch the Intelope web UI."""
+    """Launch Intelope web UI."""
     rprint(f"[bold green]🧠 Intelope[/bold green] starting at http://{host}:{port}")
     from ui.app import launch
     launch(host=host, port=port)
