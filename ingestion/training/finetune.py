@@ -239,8 +239,7 @@ def _train_unsloth(model_name, dataset, output_dir, epochs, lora_r,
                    lora_alpha, lr, batch_size, max_seq_length):
     """Fast path: train with unsloth (2-5x faster, lower VRAM)."""
     from unsloth import FastLanguageModel
-    from trl import SFTTrainer
-    from transformers import TrainingArguments
+    from trl import SFTTrainer, SFTConfig
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model_name,
@@ -263,11 +262,11 @@ def _train_unsloth(model_name, dataset, output_dir, epochs, lora_r,
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=dataset,
-        dataset_text_field="formatted",
-        max_seq_length=max_seq_length,
-        args=TrainingArguments(
+        args=SFTConfig(
+            dataset_text_field="formatted",
+            max_seq_length=max_seq_length,
             per_device_train_batch_size=batch_size,
             gradient_accumulation_steps=4,
             num_train_epochs=epochs,
@@ -288,9 +287,9 @@ def _train_unsloth(model_name, dataset, output_dir, epochs, lora_r,
 def _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
                         lora_alpha, lr, batch_size, max_seq_length):
     """Fallback: standard transformers + peft LoRA."""
-    from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
+    from transformers import AutoTokenizer, AutoModelForCausalLM
     from peft import LoraConfig, get_peft_model, TaskType
-    from trl import SFTTrainer
+    from trl import SFTTrainer, SFTConfig
     import torch
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -314,11 +313,11 @@ def _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=dataset,
-        dataset_text_field="formatted",
-        max_seq_length=max_seq_length,
-        args=TrainingArguments(
+        args=SFTConfig(
+            dataset_text_field="formatted",
+            max_seq_length=max_seq_length,
             per_device_train_batch_size=batch_size,
             gradient_accumulation_steps=4,
             num_train_epochs=epochs,
