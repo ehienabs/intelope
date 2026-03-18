@@ -13,7 +13,7 @@ from starlette.responses import StreamingResponse
 import uvicorn
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DASHBOARD = PROJECT_ROOT / "intelope-dashboard.html"
+DASHBOARD = Path(__file__).resolve().parent / "intelope-dashboard.html"
 DATA_DIR = PROJECT_ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
 CLEAN_DIR = DATA_DIR / "clean"

@@ -50,6 +50,9 @@ intelope = "cli:app"
 [tool.setuptools.packages.find]
 include = ["ingestion*", "pipeline*", "ui*"]
 
+[tool.setuptools.package-data]
+ui = ["*.html"]
+
 [tool.setuptools]
 py-modules = ["cli"]
 
