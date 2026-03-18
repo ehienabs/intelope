@@ -82,8 +82,9 @@ class ETACallback(TrainerCallback):
             "vram": _get_vram(),
         })
 
-        msg = (f"  [{int(frac*100):3d}%] step {state.global_step}/{state.max_steps}"
-               f"  loss={loss:.4f}" if loss else "")
+        msg = f"  [{int(frac*100):3d}%] step {state.global_step}/{state.max_steps}"
+        if loss is not None:
+            msg += f"  loss={loss:.4f}"
         _emit({"type": "log", "message": msg})
 
         # Check stop flag
