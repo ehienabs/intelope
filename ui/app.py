@@ -182,30 +182,26 @@ def get_status():
     total_chunks = 0
     clean_total = 0
     pii_count = 0
-    source_counts = {}
+    datasets = []
+    ready_count = 0
 
     if DATASETS_DIR.exists():
-        for ds_dir in DATASETS_DIR.iterdir():
+        for ds_dir in sorted(DATASETS_DIR.iterdir()):
             if not ds_dir.is_dir():
                 continue
+            raw_count = sum(1 for _ in (ds_dir / "uploads").glob("*")) if (ds_dir / "uploads").exists() else 0
+            chunk_count = 0
             processed = ds_dir / "processed"
             if processed.exists():
                 for jsonl_file in processed.glob("*.jsonl"):
                     with jsonl_file.open() as f:
                         for line in f:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                record = json.loads(line)
-                                total_chunks += 1
-                                stype = record.get("source_type", "unknown")
-                                if stype not in source_counts:
-                                    source_counts[stype] = {"files": set(), "chunks": 0}
-                                source_counts[stype]["files"].add(record.get("source", ""))
-                                source_counts[stype]["chunks"] += 1
-                            except json.JSONDecodeError:
-                                continue
+                            if line.strip():
+                                chunk_count += 1
+            total_chunks += chunk_count
+
+            clean_count = 0
+            ds_pii = 0
             clean_file = ds_dir / "clean.jsonl"
             if clean_file.exists():
                 with clean_file.open() as f:
@@ -213,11 +209,25 @@ def get_status():
                         if line.strip():
                             try:
                                 rec = json.loads(line)
-                                clean_total += 1
+                                clean_count += 1
                                 if rec.get("pii_scrubbed"):
-                                    pii_count += 1
+                                    ds_pii += 1
                             except json.JSONDecodeError:
                                 continue
+            clean_total += clean_count
+            pii_count += ds_pii
+            is_ready = clean_count > 0
+            if is_ready:
+                ready_count += 1
+
+            datasets.append({
+                "name": ds_dir.name,
+                "files": raw_count,
+                "chunks": chunk_count,
+                "clean_records": clean_count,
+                "pii_scrubbed": ds_pii,
+                "ready": is_ready,
+            })
 
     models_dir = PROJECT_ROOT / "models"
     model_count = 0
@@ -226,16 +236,14 @@ def get_status():
             if d.is_dir() and (d / "adapter_config.json").exists():
                 model_count += 1
 
-    sources = {}
-    for stype, info in source_counts.items():
-        sources[stype] = {"files": len(info["files"]), "chunks": info["chunks"]}
-
     return {
+        "dataset_count": len(datasets),
+        "ready_count": ready_count,
         "total_chunks": total_chunks,
         "clean_chunks": clean_total,
         "pii_scrubbed": pii_count,
         "models_trained": model_count,
-        "sources": sources,
+        "datasets": datasets,
     }
 
 
@@ -263,15 +271,26 @@ async def start_training(request: Request):
     output_name = _sanitize(body.get("output_name", "latest")) or "latest"
     dataset_choice = body.get("dataset", "").strip()
 
-    # Resolve dataset — look for clean.jsonl inside the dataset directory
-    safe_ds = _sanitize(dataset_choice) if dataset_choice else ""
-    ds_clean = DATASETS_DIR / safe_ds / "clean.jsonl" if safe_ds else None
-    if ds_clean and ds_clean.exists():
-        tmp = Path(tempfile.mkdtemp())
-        (tmp / "clean.jsonl").symlink_to(ds_clean)
-        train_data_dir = tmp
-    else:
-        return JSONResponse({"error": f"Dataset '{dataset_choice}' not found or not cleaned yet."}, status_code=400)
+    
+    ds_names = [d.strip() for d in dataset_choice.split(",") if d.strip()] if dataset_choice else []
+    if not ds_names:
+        return JSONResponse({"error": "No dataset specified."}, status_code=400)
+    tmp = Path(tempfile.mkdtemp())
+    merged_lines: list[str] = []
+    missing = []
+    for ds_name in ds_names:
+        safe_ds = _sanitize(ds_name)
+        ds_clean = DATASETS_DIR / safe_ds / "clean.jsonl"
+        if ds_clean.exists():
+            merged_lines.extend(ds_clean.read_text().splitlines())
+        else:
+            missing.append(ds_name)
+    if missing:
+        return JSONResponse({"error": f"Dataset(s) not found or not cleaned: {', '.join(missing)}"}, status_code=400)
+    if not merged_lines:
+        return JSONResponse({"error": "Selected dataset(s) have no clean records."}, status_code=400)
+    (tmp / "clean.jsonl").write_text("\n".join(merged_lines) + "\n")
+    train_data_dir = tmp
 
     _train_queue = queue.Queue()
 
@@ -291,6 +310,7 @@ async def start_training(request: Request):
                 batch_size=batch_size,
                 max_seq_length=max_seq_length,
                 output_name=output_name,
+                dataset_name=", ".join(ds_names),
             )
         except Exception as e:
             _train_queue.put({"type": "error", "message": str(e)})
@@ -341,7 +361,7 @@ _chat_history = []
 
 @app.get("/api/models")
 def list_models():
-    """Return available trained models."""
+    """Return available trained models with metadata."""
     models_dir = PROJECT_ROOT / "models"
     models = []
     if models_dir.exists():
@@ -353,7 +373,27 @@ def list_models():
                     base = cfg.get("base_model_name_or_path", "unknown")
                 except Exception:
                     base = "unknown"
-                models.append({"name": d.name, "base_model": base})
+                meta = {}
+                meta_path = d / "training_meta.json"
+                if meta_path.exists():
+                    try:
+                        meta = json.loads(meta_path.read_text())
+                    except Exception:
+                        pass
+                import datetime as _dt
+                created = _dt.datetime.fromtimestamp(d.stat().st_mtime).isoformat()
+                size_mb = sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / (1024 * 1024)
+                models.append({
+                    "name": d.name,
+                    "base_model": base,
+                    "created": meta.get("trained_at", created),
+                    "dataset": meta.get("dataset", ""),
+                    "training_examples": meta.get("training_examples", 0),
+                    "epochs": meta.get("epochs", 0),
+                    "lora_r": meta.get("lora_r", 0),
+                    "learning_rate": meta.get("learning_rate", 0),
+                    "size_mb": round(size_mb, 1),
+                })
     return {"models": models}
 
 

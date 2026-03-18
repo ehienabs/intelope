@@ -178,6 +178,45 @@ With defaults (batch=2, grad_accum=4, epochs=3):
 - **More epochs help small datasets** — with 200 chunks, try 5–8 epochs instead of 3
 - **Quality > quantity** — always create a dataset first; 300 clean chunks beat 3,000 noisy ones
 
+### Tuning advice
+
+#### Epochs
+
+Default: **3** — safe but conservative.
+
+With a small dataset (~2,000–3,000 examples), the model needs more passes to internalise patterns. The sweet spot is usually **5–6 epochs**. Watch for overfitting: if training loss keeps dropping but outputs start sounding repetitive or "memorised", you've gone too far.
+
+#### LoRA Rank
+
+Default: **16** — reasonable for moderate complexity.
+
+| Rank | When to use |
+|------|-------------|
+| 8 | Narrow, consistent style or simple Q&A patterns |
+| 16 | Moderate complexity (default) |
+| 32 | Complex reasoning, multi-turn conversation, or diverse writing styles |
+
+Higher rank = more trainable parameters = more expressive, but slower and more prone to overfitting on small data. With fewer than ~3,000 examples, jumping to 32 without more data can backfire.
+
+#### Dataset size
+
+This is your highest-leverage point — more than epochs or rank, **data quality and quantity drives results**.
+
+- **Target**: 5,000–10,000 examples for noticeable improvement
+- **Consistency matters more than volume** — 2,000 high-quality, well-formatted examples beats 8,000 noisy ones
+- Make sure your examples reflect exactly the behaviour you want — the model will imitate the patterns, good and bad
+- Consider **synthetic data augmentation** — generate variations of your best examples using a base model to cheaply expand the dataset
+
+#### Suggested progression
+
+Rather than changing everything at once, iterate one variable at a time:
+
+1. **First** — clean and expand your dataset to ~5,000 examples
+2. **Then** — re-run with epochs bumped to 5
+3. **Only then** — experiment with rank 32 if results still feel shallow
+
+Changing one variable at a time makes it much easier to know what's actually helping.
+
 ---
 
 ## Privacy design

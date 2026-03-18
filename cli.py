@@ -83,33 +83,46 @@ def ingest(
 @app.command()
 def train(
     base_model: str = typer.Option("smollm2-360m", "--model", "-m", help="Base model to fine-tune"),
-    dataset: str = typer.Option(..., "--dataset", "-d", help="Named dataset to train on"),
+    dataset: str = typer.Option(..., "--dataset", "-d", help="Dataset(s) to train on "),
     name: str = typer.Option("latest", "--name", "-n", help="Name for the trained model"),
     output_dir: Path = typer.Option(Path("models/"), "--output"),
     epochs: int = typer.Option(3, "--epochs", "-e"),
     lora_r: int = typer.Option(16, "--lora-r"),
 ):
-    """Fine-tune a base model on a cleaned dataset using LoRA."""
+    """Fine-tune a base model on one or more cleaned datasets using LoRA."""
     import tempfile
 
-    safe_ds = _sanitize(dataset)
-    ds_clean = DATASETS_DIR / safe_ds / "clean.jsonl"
-    if not ds_clean.exists():
-        rprint(f"[red]Error:[/red] Dataset '{dataset}' not found or not cleaned yet.")
-        rprint("[dim]Run [bold]intelope dataset clean {dataset}[/bold] first.[/dim]")
+    ds_names = [d.strip() for d in dataset.split(",") if d.strip()]
+    if not ds_names:
+        rprint("[red]Error:[/red] No dataset specified.")
         raise typer.Exit(1)
 
-    # Create a temp dir with just this dataset for the trainer
+    # Merge clean.jsonl from all specified datasets
+    merged_lines: list[str] = []
+    for ds in ds_names:
+        safe_ds = _sanitize(ds)
+        ds_clean = DATASETS_DIR / safe_ds / "clean.jsonl"
+        if not ds_clean.exists():
+            rprint(f"[red]Error:[/red] Dataset '{ds}' not found or not cleaned yet.")
+            rprint(f"[dim]Run [bold]intelope dataset clean {ds}[/bold] first.[/dim]")
+            raise typer.Exit(1)
+        merged_lines.extend(ds_clean.read_text().splitlines())
+
+    if not merged_lines:
+        rprint("[red]Error:[/red] Selected dataset(s) have no clean records.")
+        raise typer.Exit(1)
+
     tmp = Path(tempfile.mkdtemp())
-    (tmp / "clean.jsonl").symlink_to(ds_clean.resolve())
+    (tmp / "clean.jsonl").write_text("\n".join(merged_lines) + "\n")
 
     safe_name = _sanitize(name) or "latest"
 
     from ingestion.training.finetune import run_finetune
 
+    ds_label = ", ".join(ds_names)
     rprint(f"[bold green]🏋  Training[/bold green] model [cyan]{safe_name}[/cyan] "
-           f"on dataset [cyan]{dataset}[/cyan] with [cyan]{base_model}[/cyan] "
-           f"for [bold]{epochs}[/bold] epochs")
+           f"on dataset{'s' if len(ds_names) > 1 else ''} [cyan]{ds_label}[/cyan] with [cyan]{base_model}[/cyan] "
+           f"for [bold]{epochs}[/bold] epochs ({len(merged_lines)} examples)")
     run_finetune(
         base_model=base_model,
         data_dir=tmp,
@@ -117,6 +130,7 @@ def train(
         epochs=epochs,
         lora_r=lora_r,
         output_name=safe_name,
+        dataset_name=ds_label,
     )
 
 

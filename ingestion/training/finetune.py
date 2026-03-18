@@ -188,6 +188,15 @@ def format_instruction(record: dict) -> str:
     )
 
 
+def _save_training_meta(save_path: Path, meta: Optional[dict]):
+    """Write training metadata alongside the saved adapter."""
+    if not meta:
+        return
+    from datetime import datetime, timezone
+    meta["trained_at"] = datetime.now(timezone.utc).isoformat()
+    (save_path / "training_meta.json").write_text(json.dumps(meta, indent=2))
+
+
 def run_finetune(
     base_model: str,
     data_dir: Path,
@@ -200,6 +209,7 @@ def run_finetune(
     max_seq_length: int = 2048,
     use_unsloth: bool = True,
     output_name: str = "latest",
+    dataset_name: str = "",
 ):
     """
     Run LoRA fine-tuning. Tries unsloth first for speed; falls back to transformers.
@@ -223,22 +233,36 @@ def run_finetune(
     # Format all records
     dataset = dataset.map(lambda x: {"formatted": format_instruction(x)})
 
+    # Build metadata for saving after train
+    _meta = {
+        "base_model": base_model,
+        "resolved_model": model_name,
+        "dataset": dataset_name,
+        "training_examples": len(dataset),
+        "epochs": epochs,
+        "lora_r": lora_r,
+        "lora_alpha": lora_alpha,
+        "learning_rate": learning_rate,
+        "batch_size": batch_size,
+        "max_seq_length": max_seq_length,
+    }
+
     reset_stop()
 
     if use_unsloth:
         try:
             _train_unsloth(model_name, dataset, output_dir, epochs, lora_r,
-                           lora_alpha, learning_rate, batch_size, max_seq_length, output_name)
+                           lora_alpha, learning_rate, batch_size, max_seq_length, output_name, _meta)
             return
         except ImportError:
             print("unsloth not installed, falling back to transformers")
 
     _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
-                        lora_alpha, learning_rate, batch_size, max_seq_length, output_name)
+                        lora_alpha, learning_rate, batch_size, max_seq_length, output_name, _meta)
 
 
 def _train_unsloth(model_name, dataset, output_dir, epochs, lora_r,
-                   lora_alpha, lr, batch_size, max_seq_length, output_name="latest"):
+                   lora_alpha, lr, batch_size, max_seq_length, output_name="latest", meta=None):
     """Fast path: train with unsloth (2-5x faster, lower VRAM)."""
     from unsloth import FastLanguageModel
     from trl import SFTTrainer, SFTConfig
@@ -284,11 +308,12 @@ def _train_unsloth(model_name, dataset, output_dir, epochs, lora_r,
     save_path = output_dir / output_name
     model.save_pretrained(str(save_path))
     tokenizer.save_pretrained(str(save_path))
+    _save_training_meta(save_path, meta)
     _emit({"type": "log", "message": f"✓ Model saved to {save_path}"})
 
 
 def _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
-                        lora_alpha, lr, batch_size, max_seq_length, output_name="latest"):
+                        lora_alpha, lr, batch_size, max_seq_length, output_name="latest", meta=None):
     """Fallback: standard transformers + peft LoRA."""
     from transformers import AutoTokenizer, AutoModelForCausalLM
     from peft import LoraConfig, get_peft_model, TaskType
@@ -340,5 +365,6 @@ def _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
     save_path = output_dir / output_name
     model.save_pretrained(str(save_path))
     tokenizer.save_pretrained(str(save_path))
+    _save_training_meta(save_path, meta)
     _emit({"type": "log", "message": f"✓ Model saved to {save_path}"})
     _emit({"type": "saved", "path": str(save_path)})

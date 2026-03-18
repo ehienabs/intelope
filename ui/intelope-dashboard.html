@@ -621,10 +621,16 @@
       <div class="nav-item" onclick="navigate('ingest')">
         <span class="nav-icon">↓</span> Ingest
       </div>
+      <div class="nav-item" onclick="navigate('dataset')">
+        <span class="nav-icon">◫</span> Datasets
+      </div>
 
       <div class="nav-section-label" style="margin-top:8px">Model</div>
       <div class="nav-item" onclick="navigate('train')">
         <span class="nav-icon">⟳</span> Train
+      </div>
+      <div class="nav-item" onclick="navigate('models')">
+        <span class="nav-icon">◆</span> Models
       </div>
       <div class="nav-item" onclick="navigate('chat')">
         <span class="nav-icon">◇</span> Chat
@@ -651,19 +657,19 @@
 
       <div class="stats-row">
         <div class="stat-card">
-          <div class="stat-label">Total Chunks</div>
-          <div class="stat-value" id="stat-chunks">0</div>
-          <div class="stat-sub">no data ingested yet</div>
+          <div class="stat-label">Datasets</div>
+          <div class="stat-value" id="stat-datasets">0</div>
+          <div class="stat-sub" id="stat-datasets-sub">none created</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">After Cleaning</div>
-          <div class="stat-value" id="stat-clean">0</div>
-          <div class="stat-sub">run cleaning after ingest</div>
+          <div class="stat-label">Total Chunks</div>
+          <div class="stat-value" id="stat-chunks">0</div>
+          <div class="stat-sub" id="stat-chunks-sub">no data ingested yet</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Models Trained</div>
           <div class="stat-value" id="stat-models">0</div>
-          <div class="stat-sub">no models yet</div>
+          <div class="stat-sub" id="stat-models-sub">no models yet</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">PII Scrubbed</div>
@@ -672,81 +678,10 @@
         </div>
       </div>
 
-      <div class="grid-2">
-        <div class="card">
-          <div class="card-title">Data Sources</div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th>Files</th>
-                <th>Chunks</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><span class="badge badge-notes">Notes</span></td>
-                <td>0</td>
-                <td>0</td>
-                <td style="color: var(--muted)">Not ingested</td>
-              </tr>
-              <tr>
-                <td><span class="badge badge-docs">Documents</span></td>
-                <td>0</td>
-                <td>0</td>
-                <td style="color: var(--muted)">Not ingested</td>
-              </tr>
-              <tr>
-                <td><span class="badge badge-chat">Chat</span></td>
-                <td>0</td>
-                <td>0</td>
-                <td style="color: var(--muted)">Not ingested</td>
-              </tr>
-              <tr>
-                <td><span class="badge badge-browser">Browser</span></td>
-                <td>0</td>
-                <td>0</td>
-                <td style="color: var(--muted)">Not ingested</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Pipeline Health</div>
-
-          <div style="margin-bottom: 20px">
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px">
-              <span>Data ingested</span>
-              <span style="color:var(--muted)">0%</span>
-            </div>
-            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
-          </div>
-
-          <div style="margin-bottom: 20px">
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px">
-              <span>Cleaning complete</span>
-              <span style="color:var(--muted)">0%</span>
-            </div>
-            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
-          </div>
-
-          <div style="margin-bottom: 20px">
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px">
-              <span>Training</span>
-              <span style="color:var(--muted)">Not started</span>
-            </div>
-            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
-          </div>
-
-          <div>
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px">
-              <span>Model ready</span>
-              <span style="color:var(--muted)">Pending</span>
-            </div>
-            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
-          </div>
+      <div class="card">
+        <div class="card-title">Datasets</div>
+        <div id="overview-datasets">
+          <div style="padding:16px; text-align:center; color:var(--muted); font-size:13px">Loading...</div>
         </div>
       </div>
     </div>
@@ -755,16 +690,15 @@
     <div id="page-ingest" class="page">
       <div class="page-header">
         <div class="page-title">Ingest Data</div>
-        <div class="page-subtitle">Create a dataset, upload your data, and prepare it for training — all locally</div>
+        <div class="page-subtitle">Create a dataset and upload your data — all processing happens locally</div>
       </div>
 
-      <!-- Create or Select Dataset -->
+      <!-- Dataset list (dominant) -->
       <div class="card" style="margin-bottom:20px">
-        <div class="card-title">① Create or Select Dataset</div>
-        <div class="page-subtitle" style="margin-bottom:12px">Give your dataset a name to get started, or select an existing one.</div>
-        <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:16px">
+        <div class="card-title">Your Datasets</div>
+        <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:14px">
           <div class="field" style="flex:1; margin:0">
-            <label>New Dataset Name</label>
+            <label>New Dataset</label>
             <input type="text" id="new-dataset-name" placeholder="e.g. personal-notes-v1">
           </div>
           <button class="btn btn-primary" onclick="createDataset()" style="height:38px">Create</button>
@@ -772,83 +706,37 @@
         <div id="dataset-list" style="font-size:13px; color:var(--muted)">Loading...</div>
       </div>
 
-      <!-- Upload Files -->
-      <div class="card" id="upload-card" style="margin-bottom:20px; opacity:0.5; pointer-events:none">
-        <div class="card-title">② Upload Files <span id="upload-dataset-badge" style="font-size:12px; color:var(--accent2); margin-left:8px"></span></div>
-        <div class="page-subtitle" style="margin-bottom:12px">Upload files into the selected dataset.</div>
-        <div class="grid-3" style="margin-bottom:16px">
-          <div class="source-card" style="cursor:default">
-            <div class="source-icon">📝</div>
-            <div class="source-name">Notes</div>
-            <div class="source-desc">.md .txt .org</div>
-          </div>
-          <div class="source-card" style="cursor:default">
-            <div class="source-icon">📚</div>
-            <div class="source-name">Documents</div>
-            <div class="source-desc">.pdf .epub</div>
-          </div>
-          <div class="source-card" style="cursor:default">
-            <div class="source-icon">💬</div>
-            <div class="source-name">Chat & Email</div>
-            <div class="source-desc">.json .mbox</div>
-          </div>
-          <div class="source-card" style="cursor:default">
-            <div class="source-icon">🌐</div>
-            <div class="source-name">Browser</div>
-            <div class="source-desc">.html</div>
-          </div>
-          <div class="source-card" style="opacity:0.5; cursor:default">
-            <div class="source-icon">📅</div>
-            <div class="source-name">Calendar</div>
-            <div class="source-desc">Coming soon</div>
-          </div>
-          <div class="source-card" style="opacity:0.5; cursor:default">
-            <div class="source-icon">🔖</div>
-            <div class="source-name">Read Later</div>
-            <div class="source-desc">Coming soon</div>
-          </div>
+      <!-- Upload (compact, disabled until dataset selected) -->
+      <div class="card" id="upload-card" style="opacity:0.5; pointer-events:none">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px">
+          <div class="card-title" style="margin:0">Upload Files</div>
+          <span id="upload-dataset-badge" style="font-size:12px; color:var(--accent2)"></span>
+          <span style="font-size:12px; color:var(--muted); margin-left:auto">.md .txt .pdf .epub .json .mbox .html</span>
         </div>
-        <div style="display:flex; gap:12px; margin-bottom:12px">
-          <div class="upload-zone" id="upload-zone" style="flex:1">
+        <div style="display:flex; gap:12px">
+          <div class="upload-zone" id="upload-zone" style="flex:1; padding:16px">
             <input type="file" multiple accept=".pdf,.epub,.md,.txt,.json,.mbox,.html,.csv" onchange="handleUpload(this)">
-            <div class="upload-icon">⬆</div>
-            <div class="upload-label">Drop files here or click to browse</div>
-            <div class="upload-hint" style="margin-top:8px">.pdf • .epub • .md • .txt • .json • .mbox • .html</div>
+            <div class="upload-icon" style="font-size:20px">⬆</div>
+            <div class="upload-label" style="font-size:12px">Drop files or click</div>
           </div>
-          <div class="upload-zone" id="upload-folder-zone" style="flex:1">
+          <div class="upload-zone" id="upload-folder-zone" style="flex:1; padding:16px">
             <input type="file" webkitdirectory mozdirectory directory onchange="handleUpload(this)">
-            <div class="upload-icon">📁</div>
-            <div class="upload-label">Upload a folder</div>
-            <div class="upload-hint" style="margin-top:8px">Select an entire folder (e.g. Obsidian vault)</div>
+            <div class="upload-icon" style="font-size:20px">📁</div>
+            <div class="upload-label" style="font-size:12px">Upload folder</div>
           </div>
         </div>
-        <div id="upload-list" style="margin-top:16px"></div>
+        <div id="upload-status" style="font-size:12px; color:var(--muted); margin-top:8px"></div>
       </div>
+    </div>
 
-      <!-- Clean Dataset -->
-      <div class="card" id="clean-card" style="margin-bottom:20px; opacity:0.5; pointer-events:none">
-        <div class="card-title">③ Clean & Prepare <span id="clean-dataset-badge" style="font-size:12px; color:var(--accent2); margin-left:8px"></span></div>
-        <div class="page-subtitle" style="margin-bottom:12px">Runs deduplication, PII scrubbing, and quality filtering on the uploaded data.</div>
-        <div id="clean-status" style="font-size:13px; color:var(--muted); margin-bottom:12px"></div>
-        <button class="btn btn-primary" id="btn-clean" onclick="cleanDataset()" style="width:100%">Run Cleaning Pipeline</button>
+    <!-- DATASET -->
+    <div id="page-dataset" class="page">
+      <div class="page-header">
+        <div class="page-title">Datasets</div>
+        <div class="page-subtitle">Manage, clean, and inspect your datasets</div>
       </div>
-
-      <!-- Browse Chunks -->
-      <div class="card" id="chunks-card" style="margin-bottom:20px; opacity:0.5; pointer-events:none">
-        <div class="card-title">Browse Chunks <span id="chunks-dataset-badge" style="font-size:12px; color:var(--accent2); margin-left:8px"></span></div>
-        <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px">
-          <input style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:7px; padding:9px 12px; font-family:var(--font-mono); font-size:13px; color:var(--text); outline:none" placeholder="Search chunks..." oninput="filterChunks(this.value)">
-          <select style="background:var(--surface2); border:1px solid var(--border); border-radius:7px; padding:9px 12px; font-family:var(--font-mono); font-size:13px; color:var(--text); outline:none" onchange="filterType(this.value)">
-            <option value="">All types</option>
-            <option value="notes">Notes</option>
-            <option value="documents">Documents</option>
-            <option value="chat">Chat</option>
-            <option value="browser">Browser</option>
-          </select>
-        </div>
-        <div id="chunk-list">
-          <!-- Populated by JS -->
-        </div>
+      <div id="ds-cards">
+        <div style="padding:24px; text-align:center; color:var(--muted); font-size:13px">Loading...</div>
       </div>
     </div>
 
@@ -868,11 +756,11 @@
                 <label>Model Name</label>
                 <input type="text" id="cfg-output-name" placeholder="e.g. my-model-v1" value="">
               </div>
-              <div class="field" style="flex:2">
-                <label>Dataset</label>
-                <select id="cfg-dataset">
-                  <option value="clean">Loading...</option>
-                </select>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Datasets <span id="cfg-dataset-count" style="color:var(--accent2); font-size:10px; text-transform:none; letter-spacing:0"></span></label>
+              <div id="cfg-dataset-list" style="max-height:160px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px; background:var(--surface2)">
+                <span style="color:var(--muted); font-size:12px">Loading...</span>
               </div>
             </div>
           </div>
@@ -999,6 +887,17 @@
       </div>
     </div>
 
+    <!-- MODELS -->
+    <div id="page-models" class="page">
+      <div class="page-header">
+        <div class="page-title">Models</div>
+        <div class="page-subtitle">Your trained models and their details</div>
+      </div>
+      <div id="models-list">
+        <div style="padding:32px; text-align:center; color:var(--muted)">Loading...</div>
+      </div>
+    </div>
+
     <!-- CHAT -->
     <div id="page-chat" class="page">
       <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start">
@@ -1110,24 +1009,39 @@ function selectModel(el, id) {
 }
 
 async function fetchDatasets() {
-  const select = document.getElementById('cfg-dataset');
+  const container = document.getElementById('cfg-dataset-list');
   try {
     const r = await fetch('/api/datasets');
     const data = await r.json();
-    select.innerHTML = '';
     const ready = (data.datasets || []).filter(d => d.ready);
     if (ready.length) {
-      ready.forEach(d => {
-        const opt = document.createElement('option');
-        opt.value = d.name;
-        opt.textContent = d.name + ' (' + d.clean_records + ' records)';
-        select.appendChild(opt);
-      });
+      container.innerHTML = ready.map(d => `
+        <label style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; font-size:13px; border-radius:4px" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+          <input type="checkbox" value="${d.name}" onchange="updateDatasetCount()" style="accent-color:var(--accent2); width:15px; height:15px; cursor:pointer">
+          <span style="color:var(--text)">${d.name}</span>
+          <span style="color:var(--muted); font-size:11px; margin-left:auto">${d.clean_records.toLocaleString()} records</span>
+        </label>
+      `).join('');
     } else {
-      select.innerHTML = '<option value="" disabled>No cleaned datasets — create and clean one in Ingest</option>';
+      container.innerHTML = '<span style="color:var(--muted); font-size:12px">No cleaned datasets — create and clean one in Ingest</span>';
     }
+    updateDatasetCount();
   } catch(e) {
-    select.innerHTML = '<option value="" disabled>Could not load datasets</option>';
+    container.innerHTML = '<span style="color:var(--muted); font-size:12px">Could not load datasets</span>';
+  }
+}
+
+function updateDatasetCount() {
+  const checked = document.querySelectorAll('#cfg-dataset-list input[type=checkbox]:checked');
+  const label = document.getElementById('cfg-dataset-count');
+  if (checked.length) {
+    const total = Array.from(checked).reduce((sum, cb) => {
+      const text = cb.parentElement.querySelector('span:last-child').textContent;
+      return sum + parseInt(text.replace(/,/g, '')) || 0;
+    }, 0);
+    label.textContent = checked.length + ' selected · ' + total.toLocaleString() + ' records';
+  } else {
+    label.textContent = '';
   }
 }
 
@@ -1137,10 +1051,12 @@ let trainingEventSource = null;
 function getTrainConfig() {
   const selectedModel = document.querySelector('.model-card.selected .model-name');
   const modelMap = {'SmolLM2-1.7B':'smollm2-1.7b','SmolLM2-360M':'smollm2-360m','Phi-3-mini':'phi3-mini'};
+  const checked = Array.from(document.querySelectorAll('#cfg-dataset-list input[type=checkbox]:checked'));
+  const datasets = checked.map(cb => cb.value).join(',');
   return {
     model: modelMap[selectedModel?.textContent?.trim()] || 'smollm2-1.7b',
     output_name: document.getElementById('cfg-output-name').value.trim() || 'latest',
-    dataset: document.getElementById('cfg-dataset').value || 'clean',
+    dataset: datasets,
     epochs: parseInt(document.getElementById('cfg-epochs').value) || 3,
     lora_r: parseInt(document.getElementById('cfg-lora-r').value) || 16,
     lora_alpha: parseInt(document.getElementById('cfg-lora-alpha').value) || 32,
@@ -1179,10 +1095,12 @@ function setTrainButtons(running) {
 
 async function startTraining() {
   const cfg = getTrainConfig();
+  if (!cfg.dataset) { alert('Select at least one dataset.'); return; }
   setTrainButtons(true);
   document.getElementById('train-log').innerHTML =
     '<span class="log-line log-info" id="cursor-line">_</span>';
-  trainLog('Training "' + cfg.output_name + '" with ' + cfg.model + ' on dataset "' + cfg.dataset + '" for ' + cfg.epochs + ' epochs...');
+  const dsLabel = cfg.dataset.split(',').join(', ');
+  trainLog('Training "' + cfg.output_name + '" with ' + cfg.model + ' on ' + dsLabel + ' for ' + cfg.epochs + ' epochs...');
 
   const res = await fetch('/api/train/start', {
     method: 'POST',
@@ -1210,6 +1128,7 @@ function finishTraining() {
   if (trainingEventSource) { trainingEventSource.close(); trainingEventSource = null; }
   setTrainButtons(false);
   fetchModels();
+  refreshModelsList();
 }
 
 async function stopTraining() {
@@ -1370,89 +1289,49 @@ let activeDataset = null;
 
 function selectDataset(name) {
   activeDataset = name;
-  // Enable upload and clean cards
+  // Enable upload card
   const uploadCard = document.getElementById('upload-card');
-  const cleanCard = document.getElementById('clean-card');
-  const chunksCard = document.getElementById('chunks-card');
   uploadCard.style.opacity = '1';
   uploadCard.style.pointerEvents = 'auto';
-  cleanCard.style.opacity = '1';
-  cleanCard.style.pointerEvents = 'auto';
-  chunksCard.style.opacity = '1';
-  chunksCard.style.pointerEvents = 'auto';
-  // Update badges
   document.getElementById('upload-dataset-badge').textContent = '→ ' + name;
-  document.getElementById('clean-dataset-badge').textContent = '→ ' + name;
-  document.getElementById('chunks-dataset-badge').textContent = '→ ' + name;
   // Highlight the selected dataset
   document.querySelectorAll('.dataset-item').forEach(el => {
     el.style.borderColor = el.dataset.name === name ? 'var(--accent2)' : 'var(--border)';
   });
-  // Clear previous upload list
-  document.getElementById('upload-list').innerHTML = '';
-  // Load chunks for this dataset
-  refreshChunks();
-  // Update clean status
-  updateCleanStatus();
+  // Clear previous upload status
+  const uploadStatus = document.getElementById('upload-status');
+  if (uploadStatus) uploadStatus.innerHTML = '';
 }
 
 // File upload — sends files to the active dataset
 function handleUpload(input) {
   if (!activeDataset) { alert('Select or create a dataset first.'); return; }
-  const list = document.getElementById('upload-list');
+  const statusEl = document.getElementById('upload-status');
   const files = Array.from(input.files);
   if (!files.length) return;
 
   const formData = new FormData();
   files.forEach(f => formData.append('files', f));
 
-  // Show file list with progress
-  files.forEach(f => {
-    const div = document.createElement('div');
-    div.className = 'chunk-card';
-    div.style.marginBottom = '8px';
-    div.id = 'upload-' + f.name.replace(/\W/g, '');
-    div.innerHTML = `
-      <div style="display:flex; align-items:center; gap:10px; font-size:13px">
-        <span style="color:var(--accent3)">⏳</span>
-        <span>${f.name}</span>
-        <span style="color:var(--muted); font-size:11px; margin-left:auto">${(f.size/1024).toFixed(1)} KB</span>
-      </div>
-      <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" style="width:30%"></div></div>`;
-    list.appendChild(div);
-  });
+  statusEl.innerHTML = '<span style="color:var(--accent3)">⏳</span> Uploading ' + files.length + ' file' + (files.length > 1 ? 's' : '') + '…';
 
   fetch('/api/datasets/' + encodeURIComponent(activeDataset) + '/upload', { method: 'POST', body: formData })
     .then(r => r.json())
     .then(data => {
-      (data.results || []).forEach(r => {
-        const id = 'upload-' + (r.file || '').replace(/\W/g, '');
-        const el = document.getElementById(id);
-        if (!el) return;
-        if (r.error) {
-          el.querySelector('span').style.color = 'var(--danger)';
-          el.querySelector('span').textContent = '✗';
-          el.innerHTML += `<div style="color:var(--danger); font-size:11px; margin-top:4px">${r.error}</div>`;
-        } else {
-          el.querySelector('span').style.color = 'var(--accent2)';
-          el.querySelector('span').textContent = '✓';
-          el.querySelector('.progress-fill').style.width = '100%';
-          const chunks = r.chunks || 0;
-          el.innerHTML += `<div style="color:var(--accent2); font-size:11px; margin-top:4px">${chunks} chunks ingested</div>`;
-        }
-      });
+      const results = data.results || [];
+      const ok = results.filter(r => !r.error);
+      const fail = results.filter(r => r.error);
+      const totalChunks = ok.reduce((s, r) => s + (r.chunks || 0), 0);
+      let msg = '<span style="color:var(--accent2)">✓</span> ' + ok.length + ' file' + (ok.length !== 1 ? 's' : '') + ' uploaded · ' + totalChunks + ' chunks ingested';
+      if (fail.length) msg += ' · <span style="color:var(--danger)">' + fail.length + ' failed</span>';
+      statusEl.innerHTML = msg;
       refreshStatus();
       refreshDatasetList();
-      refreshChunks();
-      updateCleanStatus();
+      refreshDatasetCards();
     })
     .catch(err => {
       console.error('Upload failed:', err);
-      files.forEach(f => {
-        const id = 'upload-' + f.name.replace(/\W/g, '');
-        const el = document.getElementById(id);
-        if (el) el.innerHTML += `<div style="color:var(--danger); font-size:11px; margin-top:4px">Upload failed</div>`;
-      });
+      statusEl.innerHTML = '<span style="color:var(--danger)">✗ Upload failed</span>';
     });
 }
 
@@ -1489,64 +1368,34 @@ async function deleteDataset(name) {
       activeDataset = null;
       document.getElementById('upload-card').style.opacity = '0.5';
       document.getElementById('upload-card').style.pointerEvents = 'none';
-      document.getElementById('clean-card').style.opacity = '0.5';
-      document.getElementById('clean-card').style.pointerEvents = 'none';
-      document.getElementById('chunks-card').style.opacity = '0.5';
-      document.getElementById('chunks-card').style.pointerEvents = 'none';
       document.getElementById('upload-dataset-badge').textContent = '';
-      document.getElementById('clean-dataset-badge').textContent = '';
-      document.getElementById('chunks-dataset-badge').textContent = '';
     }
     refreshDatasetList();
+    refreshDatasetCards();
     fetchDatasets();
     refreshStatus();
   } catch(e) { /* ignore */ }
 }
 
-async function cleanDataset() {
-  if (!activeDataset) { alert('Select a dataset first.'); return; }
-  const btn = document.getElementById('btn-clean');
-  btn.disabled = true;
-  btn.textContent = 'Cleaning...';
-
+async function cleanDatasetByName(name) {
+  const btn = document.getElementById('btn-clean-' + CSS.escape(name));
+  if (btn) { btn.disabled = true; btn.textContent = 'Cleaning…'; }
   try {
-    const r = await fetch('/api/datasets/' + encodeURIComponent(activeDataset) + '/clean', {method: 'POST'});
+    const r = await fetch('/api/datasets/' + encodeURIComponent(name) + '/clean', {method: 'POST'});
     const data = await r.json();
-    btn.disabled = false;
-    btn.textContent = 'Run Cleaning Pipeline';
+    if (btn) { btn.disabled = false; btn.textContent = 'Clean'; }
     if (data.error) {
       alert(data.error);
     } else {
-      document.getElementById('clean-status').innerHTML =
-        '<span style="color:var(--accent2)">✓</span> ' + data.output_records + ' records ready (' +
-        data.removed_quality + ' low-quality, ' + data.removed_duplicates + ' duplicates removed, ' +
-        data.pii_scrubbed + ' PII scrubbed)';
+      refreshDatasetCards();
       refreshDatasetList();
       fetchDatasets();
       refreshStatus();
     }
   } catch(e) {
-    btn.disabled = false;
-    btn.textContent = 'Run Cleaning Pipeline';
+    if (btn) { btn.disabled = false; btn.textContent = 'Clean'; }
     alert('Cleaning failed — check the server logs.');
   }
-}
-
-function updateCleanStatus() {
-  if (!activeDataset) return;
-  fetch('/api/datasets')
-    .then(r => r.json())
-    .then(data => {
-      const ds = (data.datasets || []).find(d => d.name === activeDataset);
-      const el = document.getElementById('clean-status');
-      if (ds && ds.clean_records > 0) {
-        el.innerHTML = '<span style="color:var(--accent2)">✓</span> ' + ds.clean_records + ' clean records ready for training';
-      } else if (ds && ds.chunks > 0) {
-        el.innerHTML = ds.chunks + ' raw chunks available — click below to clean';
-      } else {
-        el.innerHTML = 'Upload files first, then clean';
-      }
-    });
 }
 
 async function refreshDatasetList() {
@@ -1573,55 +1422,149 @@ async function refreshDatasetList() {
   }
 }
 
+// ─── Dataset Cards (Dataset tab) ──────────────────
+let expandedDatasets = new Set();
+
+async function refreshDatasetCards() {
+  const container = document.getElementById('ds-cards');
+  if (!container) return;
+  try {
+    const r = await fetch('/api/datasets');
+    const data = await r.json();
+    if (!data.datasets || !data.datasets.length) {
+      container.innerHTML = '<div style="padding:32px; text-align:center; color:var(--muted)">No datasets yet. Go to <b>Ingest</b> to create one.</div>';
+      return;
+    }
+    container.innerHTML = data.datasets.map(d => {
+      const expanded = expandedDatasets.has(d.name);
+      const statusLabel = d.ready
+        ? '<span style="color:var(--accent2)">✓ Ready</span> · ' + d.clean_records + ' clean records'
+        : d.chunks > 0
+          ? '<span style="color:var(--accent3)">Needs cleaning</span>'
+          : '<span style="color:var(--muted)">Empty</span>';
+      return `
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex; align-items:center; gap:12px">
+            <div style="flex:1; cursor:pointer" onclick="toggleDatasetExpand('${d.name}')">
+              <span style="font-size:15px; font-weight:600; color:var(--text)">${d.name}</span>
+              <span style="color:var(--muted); margin-left:10px; font-size:13px">${d.files} files · ${d.chunks} chunks</span>
+              <div style="font-size:12px; margin-top:4px">${statusLabel}</div>
+            </div>
+            <button id="btn-clean-${CSS.escape(d.name)}" class="btn btn-primary" style="font-size:12px; padding:6px 16px" onclick="event.stopPropagation(); cleanDatasetByName('${d.name}')" ${d.chunks === 0 ? 'disabled' : ''}>Clean</button>
+            <button class="btn btn-secondary" style="font-size:12px; padding:6px 12px; color:var(--danger); border-color:rgba(247,106,106,0.25)" onclick="event.stopPropagation(); deleteDataset('${d.name}')">Delete</button>
+            <span style="cursor:pointer; font-size:16px; color:var(--muted); user-select:none; width:20px; text-align:center" onclick="toggleDatasetExpand('${d.name}')">${expanded ? '▾' : '▸'}</span>
+          </div>
+          <div id="ds-expand-${CSS.escape(d.name)}" style="display:${expanded ? 'block' : 'none'}; margin-top:14px; border-top:1px solid var(--border); padding-top:14px">
+            <div style="color:var(--muted); font-size:12px; margin-bottom:8px">Loading…</div>
+          </div>
+        </div>`;
+    }).join('');
+    // Auto-load expanded
+    expandedDatasets.forEach(name => loadDatasetPreview(name));
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--muted); padding:24px; text-align:center">Could not load datasets.</div>';
+  }
+}
+
+function toggleDatasetExpand(name) {
+  if (expandedDatasets.has(name)) {
+    expandedDatasets.delete(name);
+    const el = document.getElementById('ds-expand-' + CSS.escape(name));
+    if (el) el.style.display = 'none';
+  } else {
+    expandedDatasets.add(name);
+    const el = document.getElementById('ds-expand-' + CSS.escape(name));
+    if (el) { el.style.display = 'block'; loadDatasetPreview(name); }
+  }
+}
+
+async function loadDatasetPreview(name) {
+  const el = document.getElementById('ds-expand-' + CSS.escape(name));
+  if (!el) return;
+  try {
+    const r = await fetch('/api/datasets/' + encodeURIComponent(name) + '/chunks');
+    const data = await r.json();
+    const chunks = data.chunks || [];
+    if (!chunks.length) {
+      el.innerHTML = '<div style="color:var(--muted); font-size:13px">No chunks yet. Upload files via Ingest, then clean.</div>';
+      return;
+    }
+    const preview = chunks.slice(0, 6);
+    el.innerHTML = `
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:10px">
+        ${preview.map(c => {
+          const text = (c.text || c.output || '').slice(0, 160);
+          const src = c.source || '';
+          const type = c.source_type || 'unknown';
+          return `<div style="background:var(--surface2); border-radius:8px; padding:12px; font-size:12px; border:1px solid var(--border)">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px">
+              <span class="badge badge-${type}" style="font-size:10px">${type}</span>
+              <span style="color:var(--muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${src}</span>
+            </div>
+            <div style="color:var(--text); line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical">${text}${text.length >= 160 ? '…' : ''}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="color:var(--muted); font-size:12px; margin-top:10px">Showing ${preview.length} of ${chunks.length} chunks</div>`;
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--danger); font-size:13px">Failed to load chunks.</div>';
+  }
+}
+
 // Refresh dashboard status from API
 function refreshStatus() {
   fetch('/api/status')
     .then(r => r.json())
     .then(data => {
+      document.getElementById('stat-datasets').textContent = data.dataset_count;
       document.getElementById('stat-chunks').textContent = data.total_chunks.toLocaleString();
-      document.getElementById('stat-clean').textContent = data.clean_chunks.toLocaleString();
       document.getElementById('stat-models').textContent = data.models_trained;
       document.getElementById('stat-pii').textContent = data.pii_scrubbed;
 
-      // Update sub-labels
-      const statCards = document.querySelectorAll('.stat-card');
+      // Sub-labels
+      const dsSub = document.getElementById('stat-datasets-sub');
+      if (data.dataset_count > 0) {
+        const ready = data.ready_count || 0;
+        dsSub.textContent = ready + ' ready for training';
+      } else {
+        dsSub.textContent = 'none created';
+      }
+      const chSub = document.getElementById('stat-chunks-sub');
       if (data.total_chunks > 0) {
-        statCards[0].querySelector('.stat-sub').textContent = `across ${Object.keys(data.sources).length} source(s)`;
+        chSub.textContent = data.clean_chunks.toLocaleString() + ' clean';
+      } else {
+        chSub.textContent = 'no data ingested yet';
       }
-      if (data.clean_chunks > 0 && data.total_chunks > 0) {
-        const pct = Math.round(data.clean_chunks / data.total_chunks * 100);
-        statCards[1].querySelector('.stat-sub').textContent = `${pct}% retention rate`;
+      const mdlSub = document.getElementById('stat-models-sub');
+      if (data.models_trained > 0) {
+        mdlSub.textContent = data.models_trained + ' available';
+      } else {
+        mdlSub.textContent = 'no models yet';
       }
 
-      // Update source table
-      const types = ['notes', 'document', 'chat', 'browser'];
-      const rows = document.querySelectorAll('.data-table tbody tr');
-      types.forEach((t, i) => {
-        if (!rows[i]) return;
-        const src = data.sources[t] || { files: 0, chunks: 0 };
-        const cells = rows[i].querySelectorAll('td');
-        cells[1].textContent = src.files;
-        cells[2].textContent = src.chunks.toLocaleString();
-        cells[3].innerHTML = src.chunks > 0
-          ? '<span style="color:var(--accent2)">✓ Ready</span>'
-          : '<span style="color:var(--muted)">Not ingested</span>';
-      });
-
-      // Update source cards on ingest page
-      const sourceCards = document.querySelectorAll('.source-card .source-chunks');
-      const cardTypes = ['notes', 'document', 'browser', 'chat'];
-      cardTypes.forEach((t, i) => {
-        if (!sourceCards[i]) return;
-        const src = data.sources[t];
-        if (src && src.chunks > 0) {
-          sourceCards[i].textContent = `${src.chunks.toLocaleString()} chunks loaded`;
-          sourceCards[i].style.color = '';
-          sourceCards[i].closest('.source-card').classList.add('connected');
-        }
-      });
-
-      // Update pipeline health bars
-      const progressBars = document.querySelectorAll('.card:has(.card-title)');
+      // Per-dataset table
+      const container = document.getElementById('overview-datasets');
+      if (!data.datasets || !data.datasets.length) {
+        container.innerHTML = '<div style="padding:16px; text-align:center; color:var(--muted); font-size:13px">No datasets yet. Go to Ingest to create one.</div>';
+        return;
+      }
+      container.innerHTML = `
+        <table class="data-table">
+          <thead><tr><th>Dataset</th><th>Files</th><th>Chunks</th><th>Clean</th><th>Status</th></tr></thead>
+          <tbody>
+            ${data.datasets.map(d => `<tr>
+              <td style="font-weight:600">${d.name}</td>
+              <td>${d.files}</td>
+              <td>${d.chunks.toLocaleString()}</td>
+              <td>${d.clean_records.toLocaleString()}</td>
+              <td>${d.ready
+                ? '<span style="color:var(--accent2)">✓ Ready</span>'
+                : d.chunks > 0
+                  ? '<span style="color:var(--accent3)">Needs cleaning</span>'
+                  : '<span style="color:var(--muted)">Empty</span>'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
     });
 }
 
@@ -1641,12 +1584,75 @@ function refreshChunks() {
     });
 }
 
+// ─── Models list (Models tab) ────────────────────
+async function refreshModelsList() {
+  const container = document.getElementById('models-list');
+  if (!container) return;
+  try {
+    const r = await fetch('/api/models');
+    const data = await r.json();
+    if (!data.models || !data.models.length) {
+      container.innerHTML = '<div style="padding:32px; text-align:center; color:var(--muted)">No models yet. Train one in the <b>Train</b> tab.</div>';
+      return;
+    }
+    container.innerHTML = data.models.map(m => {
+      const base = m.base_model ? m.base_model.split('/').pop() : 'unknown';
+      const date = m.created ? new Date(m.created).toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'}) : '—';
+      const time = m.created ? new Date(m.created).toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'}) : '';
+      return `
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:12px">
+            <span style="font-size:22px">🧠</span>
+            <div style="flex:1">
+              <div style="font-size:15px; font-weight:600; color:var(--text)">${m.name}</div>
+              <div style="font-size:12px; color:var(--muted)">Base: ${base}</div>
+            </div>
+            <div style="text-align:right; font-size:12px; color:var(--muted)">
+              <div>${date}</div>
+              <div>${time}</div>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px; font-size:13px">
+            <div style="background:var(--surface2); border-radius:8px; padding:10px; border:1px solid var(--border)">
+              <div style="color:var(--muted); font-size:11px; margin-bottom:2px">Dataset</div>
+              <div style="font-weight:600; color:var(--text)">${m.dataset || '—'}</div>
+            </div>
+            <div style="background:var(--surface2); border-radius:8px; padding:10px; border:1px solid var(--border)">
+              <div style="color:var(--muted); font-size:11px; margin-bottom:2px">Examples</div>
+              <div style="font-weight:600; color:var(--text)">${m.training_examples ? m.training_examples.toLocaleString() : '—'}</div>
+            </div>
+            <div style="background:var(--surface2); border-radius:8px; padding:10px; border:1px solid var(--border)">
+              <div style="color:var(--muted); font-size:11px; margin-bottom:2px">Epochs</div>
+              <div style="font-weight:600; color:var(--text)">${m.epochs || '—'}</div>
+            </div>
+            <div style="background:var(--surface2); border-radius:8px; padding:10px; border:1px solid var(--border)">
+              <div style="color:var(--muted); font-size:11px; margin-bottom:2px">LoRA Rank</div>
+              <div style="font-weight:600; color:var(--text)">${m.lora_r || '—'}</div>
+            </div>
+            <div style="background:var(--surface2); border-radius:8px; padding:10px; border:1px solid var(--border)">
+              <div style="color:var(--muted); font-size:11px; margin-bottom:2px">Learning Rate</div>
+              <div style="font-weight:600; color:var(--text)">${m.learning_rate || '—'}</div>
+            </div>
+            <div style="background:var(--surface2); border-radius:8px; padding:10px; border:1px solid var(--border)">
+              <div style="color:var(--muted); font-size:11px; margin-bottom:2px">Size</div>
+              <div style="font-weight:600; color:var(--text)">${m.size_mb ? m.size_mb + ' MB' : '—'}</div>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--muted); padding:24px; text-align:center">Could not load models.</div>';
+  }
+}
+
 // Load real data on page load
 document.addEventListener('DOMContentLoaded', () => {
   refreshStatus();
   fetchModels();
   fetchDatasets();
   refreshDatasetList();
+  refreshDatasetCards();
+  refreshModelsList();
 });
 
 // Blinking cursor in terminal
