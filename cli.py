@@ -8,7 +8,9 @@ Usage:
     intelope ingest <path> --dataset <name>  # ingest files into a dataset
     intelope dataset clean <name>            # clean a dataset for training
     intelope train --dataset <name> --name <model>  # train a model
+    intelope index --dataset <name>          # build RAG search index
     intelope chat --model <name>             # chat with a trained model
+    intelope chat --model <name> --rag       # chat with RAG context
     intelope status                          # show current stats
 """
 
@@ -138,6 +140,7 @@ def train(
 def chat(
     model: str = typer.Option("latest", "--model", "-m", help="Name of the trained model"),
     system_prompt: Optional[str] = typer.Option(None, "--system"),
+    rag: bool = typer.Option(False, "--rag", help="Enable RAG (search your documents for context)"),
 ):
     """Chat with a trained model in the terminal."""
     model_dir = Path("models") / model
@@ -146,9 +149,42 @@ def chat(
         rprint("[dim]Run [bold]intelope status[/bold] to see available models.[/dim]")
         raise typer.Exit(1)
     from ingestion.training.inference import chat_loop
-    rprint(f"[bold green]💬 Intelope Chat[/bold green] (model: {model})")
+    rprint(f"[bold green]\U0001f4ac Intelope Chat[/bold green] (model: {model})")
+    if rag:
+        rprint("[dim]RAG enabled \u2014 answers will be grounded in your documents[/dim]")
     rprint("[dim]Type /exit to quit, /clear to reset context[/dim]\n")
-    chat_loop(model_dir=model_dir, system_prompt=system_prompt)
+    chat_loop(model_dir=model_dir, system_prompt=system_prompt, use_rag=rag)
+
+
+@app.command()
+def index(
+    dataset: str = typer.Option(..., "--dataset", "-d", help="Dataset(s) to index (comma-separated)"),
+):
+    """Build a RAG search index from cleaned datasets."""
+    ds_names = [d.strip() for d in dataset.split(",") if d.strip()]
+    if not ds_names:
+        rprint("[red]Error:[/red] No dataset specified.")
+        raise typer.Exit(1)
+
+    for ds in ds_names:
+        safe_ds = _sanitize(ds)
+        ds_clean = DATASETS_DIR / safe_ds / "clean.jsonl"
+        if not ds_clean.exists():
+            rprint(f"[red]Error:[/red] Dataset '{ds}' not found or not cleaned yet.")
+            rprint(f"[dim]Run [bold]intelope dataset clean {ds}[/bold] first.[/dim]")
+            raise typer.Exit(1)
+
+    safe_names = [_sanitize(d) for d in ds_names]
+    with console.status(f"[bold]Building RAG index from {', '.join(ds_names)}...[/bold]"):
+        from pipeline.rag import build_index
+        stats = build_index(safe_names, datasets_dir=DATASETS_DIR)
+
+    if stats.get("error"):
+        rprint(f"[red]Error:[/red] {stats['error']}")
+        raise typer.Exit(1)
+
+    rprint(f"[green]✓[/green] RAG index built: [bold]{stats['chunks']}[/bold] chunks indexed")
+    rprint(f"[dim]Now use [bold]intelope chat --model <name> --rag[/bold] to chat with document context.[/dim]")
 
 
 # ── Dataset subcommands ──────────────────────────────────────────────────────
@@ -291,6 +327,13 @@ def status():
     table.add_row("Trained models", str(len(model_names)))
     if model_names:
         table.add_row("Model names", ", ".join(model_names))
+
+    from pipeline.rag import index_exists, get_index_info
+    if index_exists():
+        info = get_index_info() or {}
+        table.add_row("RAG index", f"✓ {info.get('total_chunks', '?')} chunks")
+    else:
+        table.add_row("RAG index", "not built")
 
     console.print(table)
 

@@ -352,11 +352,74 @@ def stop_training():
     return {"status": "stop_requested"}
 
 
+# ── RAG ───────────────────────────────────────────────────────────────────────
+_retriever = None
+
+
+@app.post("/api/rag/build")
+async def build_rag_index(request: Request):
+    """Build RAG index from one or more datasets."""
+    body = await request.json()
+    dataset_names = body.get("datasets", [])
+    if not dataset_names:
+        return JSONResponse({"error": "No datasets specified."}, status_code=400)
+
+    missing = [d for d in dataset_names
+               if not (DATASETS_DIR / _sanitize(d) / "clean.jsonl").exists()]
+    if missing:
+        return JSONResponse({"error": f"Datasets not found or not cleaned: {', '.join(missing)}"},
+                            status_code=400)
+
+    from pipeline.rag import build_index
+    safe_names = [_sanitize(d) for d in dataset_names]
+    stats = build_index(safe_names, datasets_dir=DATASETS_DIR)
+    if stats.get("error"):
+        return JSONResponse({"error": stats["error"]}, status_code=400)
+
+    # Auto-load the new index
+    global _retriever
+    from pipeline.rag import Retriever
+    _retriever = Retriever()
+
+    return stats
+
+
+@app.get("/api/rag/status")
+def rag_status():
+    """Return info about the current RAG index."""
+    from pipeline.rag import get_index_info, index_exists
+    if not index_exists():
+        return {"indexed": False}
+    info = get_index_info() or {}
+    return {"indexed": True, "loaded": _retriever is not None, **info}
+
+
+@app.post("/api/rag/search")
+async def rag_search(request: Request):
+    """Search the RAG index."""
+    global _retriever
+    if _retriever is None:
+        from pipeline.rag import index_exists, Retriever
+        if not index_exists():
+            return JSONResponse({"error": "No RAG index built. Build one first."}, status_code=400)
+        _retriever = Retriever()
+
+    body = await request.json()
+    query = body.get("query", "").strip()
+    top_k = int(body.get("top_k", 5))
+    if not query:
+        return JSONResponse({"error": "Empty query."}, status_code=400)
+
+    results = _retriever.search(query, top_k=top_k)
+    return {"results": results}
+
+
 # ── Chat ──────────────────────────────────────────────────────────────────────
 _chat_model = None
 _chat_tokenizer = None
 _chat_backend = None
 _chat_history = []
+_chat_rag_enabled = False
 
 
 @app.get("/api/models")
@@ -417,7 +480,7 @@ async def load_chat_model(request: Request):
 @app.post("/api/chat")
 async def chat_message(request: Request):
     """Send a message and get a response from the loaded model."""
-    global _chat_history
+    global _chat_history, _retriever
     if _chat_model is None:
         return JSONResponse({"error": "No model loaded. Load a model first."}, status_code=400)
 
@@ -426,11 +489,28 @@ async def chat_message(request: Request):
     if not message:
         return JSONResponse({"error": "Empty message."}, status_code=400)
 
+    # Auto-load retriever if RAG is enabled but not loaded
+    retriever = None
+    if _chat_rag_enabled:
+        if _retriever is None:
+            from pipeline.rag import index_exists, Retriever
+            if index_exists():
+                _retriever = Retriever()
+        retriever = _retriever
+
     from ingestion.training.inference import generate
     _chat_history.append({"role": "user", "content": message})
-    reply = generate(_chat_model, _chat_tokenizer, _chat_history, _chat_backend)
+    reply, retrieved = generate(_chat_model, _chat_tokenizer, _chat_history,
+                                _chat_backend, retriever=retriever)
     _chat_history.append({"role": "assistant", "content": reply})
-    return {"reply": reply}
+
+    response = {"reply": reply}
+    if retrieved:
+        response["sources"] = [
+            {"text": r["text"][:200], "source": r["source"], "score": round(r["score"], 3)}
+            for r in retrieved
+        ]
+    return response
 
 
 @app.post("/api/chat/clear")
@@ -440,6 +520,15 @@ def clear_chat_history():
     from ingestion.training.inference import DEFAULT_SYSTEM
     _chat_history = [{"role": "system", "content": DEFAULT_SYSTEM}]
     return {"status": "cleared"}
+
+
+@app.post("/api/chat/rag")
+async def toggle_chat_rag(request: Request):
+    """Enable or disable RAG for chat."""
+    global _chat_rag_enabled
+    body = await request.json()
+    _chat_rag_enabled = bool(body.get("enabled", False))
+    return {"rag_enabled": _chat_rag_enabled}
 
 
 def launch(host: str = "127.0.0.1", port: int = 7860):

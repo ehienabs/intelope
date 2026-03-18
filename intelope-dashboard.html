@@ -635,6 +635,11 @@
       <div class="nav-item" onclick="navigate('chat')">
         <span class="nav-icon">◇</span> Chat
       </div>
+
+      <div class="nav-section-label" style="margin-top:8px">Search</div>
+      <div class="nav-item" onclick="navigate('rag')">
+        <span class="nav-icon">⊙</span> RAG Index
+      </div>
     </nav>
 
     <div class="sidebar-footer">
@@ -898,6 +903,50 @@
       </div>
     </div>
 
+    <!-- RAG INDEX -->
+    <div id="page-rag" class="page">
+      <div class="page-header">
+        <div class="page-title">RAG Index</div>
+        <div class="page-subtitle">Build a search index so your model can look up your actual documents when answering</div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">How It Works</div>
+        <div style="font-size:13px; color:var(--muted); line-height:1.7">
+          <strong style="color:var(--text)">Without RAG:</strong> Your model guesses from memory — it may hallucinate facts.<br>
+          <strong style="color:var(--text)">With RAG:</strong> Every question searches your documents first, then feeds the relevant excerpts to the model as context — so it answers based on what you actually have.
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Index Status</div>
+        <div id="rag-status-info" style="font-size:13px; color:var(--muted); line-height:1.7">
+          Checking...
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Build Index</div>
+        <div style="font-size:13px; color:var(--muted); margin-bottom:12px">Select which datasets to include in the search index.</div>
+        <div id="rag-dataset-list" style="margin-bottom:14px">
+          <span style="color:var(--muted); font-size:12px">Loading datasets...</span>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center">
+          <button class="btn btn-primary" id="btn-build-index" onclick="buildRagIndex()">Build Index</button>
+          <span id="rag-build-status" style="font-size:12px; color:var(--muted)"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Test Search</div>
+        <div style="display:flex; gap:10px; margin-bottom:14px">
+          <input type="text" id="rag-test-query" placeholder="Try a search query..." style="flex:1; font-size:13px; padding:8px 12px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-family:var(--font-mono)">
+          <button class="btn btn-secondary" onclick="testRagSearch()">Search</button>
+        </div>
+        <div id="rag-test-results" style="font-size:12px; color:var(--muted)">Enter a query above to test your index.</div>
+      </div>
+    </div>
+
     <!-- CHAT -->
     <div id="page-chat" class="page">
       <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start">
@@ -905,13 +954,17 @@
           <div class="page-title">Chat</div>
           <div class="page-subtitle">Talk to your model</div>
         </div>
-        <div style="display:flex; gap:10px; align-items:center">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
           <span style="font-size:12px; color:var(--muted)">Model:</span>
           <select id="chat-model-select" style="font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; min-width:140px">
             <option value="" disabled selected>Select a model</option>
           </select>
           <span id="chat-model-status" style="font-size:12px; color:var(--muted)"></span>
           <button class="btn btn-primary" style="font-size:12px; padding:7px 14px" onclick="loadSelectedModel()">Load</button>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid var(--border); background:var(--surface2)" title="Enable RAG to ground answers in your actual documents">
+            <input type="checkbox" id="chat-rag-toggle" onchange="toggleChatRag(this.checked)" style="accent-color:var(--accent2); cursor:pointer">
+            <span style="color:var(--text)">RAG</span>
+          </label>
           <button class="btn btn-secondary" style="font-size:12px; padding:7px 14px" onclick="clearChat()">Clear</button>
         </div>
       </div>
@@ -944,9 +997,9 @@
           </div>
 
           <div class="card">
-            <div class="card-title">Context Used</div>
-            <div style="font-size:12px; color:var(--muted); line-height:1.7">
-              No model responses yet.
+            <div class="card-title">Sources Used</div>
+            <div id="chat-sources" style="font-size:12px; color:var(--muted); line-height:1.7">
+              Enable RAG to see which documents inform each answer.
             </div>
           </div>
         </div>
@@ -1252,6 +1305,17 @@ async function sendMessage() {
         <div class="avatar avatar-ai">IN</div>
         <div class="bubble bubble-ai">${reply}</div>
       </div>`;
+
+    // Show sources if RAG returned them
+    const sourcesEl = document.getElementById('chat-sources');
+    if (data.sources && data.sources.length) {
+      sourcesEl.innerHTML = data.sources.map(s => `
+        <div style="background:var(--surface2); border-radius:6px; padding:8px 10px; margin-bottom:6px; border:1px solid var(--border)">
+          <div style="color:var(--accent2); font-size:11px; margin-bottom:3px">${s.source} <span style="color:var(--muted)">· score ${s.score}</span></div>
+          <div style="color:var(--text); font-size:12px; line-height:1.5">${s.text}</div>
+        </div>
+      `).join('');
+    }
   } catch(e) {
     const indicator = document.getElementById('typing-indicator');
     if (indicator) indicator.remove();
@@ -1645,6 +1709,143 @@ async function refreshModelsList() {
   }
 }
 
+// ─── RAG functions ──────────────────────────────
+async function refreshRagStatus() {
+  const el = document.getElementById('rag-status-info');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/rag/status');
+    const data = await r.json();
+    if (data.indexed) {
+      el.innerHTML = `
+        <span style="color:var(--accent2)">✓ Index built</span> · ${(data.total_chunks || 0).toLocaleString()} chunks indexed<br>
+        Datasets: ${(data.datasets || []).join(', ')}<br>
+        Embedding model: ${data.model || 'unknown'} (${data.embedding_dim || '?'}d)
+        ${data.loaded ? ' · <span style="color:var(--accent2)">Loaded</span>' : ''}
+      `;
+    } else {
+      el.innerHTML = 'No index built yet. Select datasets below and click <b>Build Index</b>.';
+    }
+  } catch(e) {
+    el.innerHTML = 'Could not check index status.';
+  }
+}
+
+async function fetchRagDatasets() {
+  const container = document.getElementById('rag-dataset-list');
+  if (!container) return;
+  try {
+    const r = await fetch('/api/datasets');
+    const data = await r.json();
+    const ready = (data.datasets || []).filter(d => d.ready);
+    if (ready.length) {
+      container.innerHTML = ready.map(d => `
+        <label style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; font-size:13px; border-radius:4px" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+          <input type="checkbox" value="${d.name}" checked style="accent-color:var(--accent2); width:15px; height:15px; cursor:pointer">
+          <span style="color:var(--text)">${d.name}</span>
+          <span style="color:var(--muted); font-size:11px; margin-left:auto">${d.clean_records.toLocaleString()} records</span>
+        </label>
+      `).join('');
+    } else {
+      container.innerHTML = '<span style="color:var(--muted); font-size:12px">No cleaned datasets available. Clean a dataset first.</span>';
+    }
+  } catch(e) {
+    container.innerHTML = '<span style="color:var(--muted); font-size:12px">Could not load datasets.</span>';
+  }
+}
+
+async function buildRagIndex() {
+  const checkboxes = document.querySelectorAll('#rag-dataset-list input[type=checkbox]:checked');
+  const datasets = Array.from(checkboxes).map(cb => cb.value);
+  if (!datasets.length) { alert('Select at least one dataset.'); return; }
+
+  const btn = document.getElementById('btn-build-index');
+  const status = document.getElementById('rag-build-status');
+  btn.disabled = true;
+  btn.textContent = 'Building...';
+  status.textContent = 'Embedding documents — this may take a minute...';
+  status.style.color = 'var(--accent3)';
+
+  try {
+    const r = await fetch('/api/rag/build', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({datasets})
+    });
+    const data = await r.json();
+    if (data.error) {
+      status.textContent = 'Error: ' + data.error;
+      status.style.color = 'var(--danger)';
+    } else {
+      status.textContent = '✓ Indexed ' + (data.chunks || 0).toLocaleString() + ' chunks';
+      status.style.color = 'var(--accent2)';
+      // Auto-enable RAG toggle in chat
+      const toggle = document.getElementById('chat-rag-toggle');
+      if (toggle && !toggle.checked) {
+        toggle.checked = true;
+        toggleChatRag(true);
+      }
+      refreshRagStatus();
+    }
+  } catch(e) {
+    status.textContent = 'Failed — check server logs.';
+    status.style.color = 'var(--danger)';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Build Index';
+}
+
+async function testRagSearch() {
+  const query = document.getElementById('rag-test-query').value.trim();
+  if (!query) return;
+  const el = document.getElementById('rag-test-results');
+  el.innerHTML = '<span style="color:var(--accent3)">Searching...</span>';
+
+  try {
+    const r = await fetch('/api/rag/search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query, top_k: 5})
+    });
+    const data = await r.json();
+    if (data.error) {
+      el.innerHTML = '<span style="color:var(--danger)">' + data.error + '</span>';
+      return;
+    }
+    if (!data.results || !data.results.length) {
+      el.innerHTML = 'No results found.';
+      return;
+    }
+    el.innerHTML = data.results.map((r, i) => `
+      <div style="background:var(--surface2); border-radius:6px; padding:10px 12px; margin-bottom:8px; border:1px solid var(--border)">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px">
+          <span style="color:var(--accent2); font-size:11px">#${i+1} · ${r.source}</span>
+          <span style="color:var(--muted); font-size:11px">score: ${r.score.toFixed(3)}</span>
+        </div>
+        <div style="color:var(--text); font-size:12px; line-height:1.6">${r.text.slice(0, 300)}${r.text.length > 300 ? '…' : ''}</div>
+      </div>
+    `).join('');
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--danger)">Search failed.</span>';
+  }
+}
+
+async function toggleChatRag(enabled) {
+  try {
+    await fetch('/api/chat/rag', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled})
+    });
+    const sourcesEl = document.getElementById('chat-sources');
+    if (enabled) {
+      sourcesEl.innerHTML = 'RAG enabled — sources will appear here after each response.';
+    } else {
+      sourcesEl.innerHTML = 'Enable RAG to see which documents inform each answer.';
+    }
+  } catch(e) { /* ignore */ }
+}
+
 // Load real data on page load
 document.addEventListener('DOMContentLoaded', () => {
   refreshStatus();
@@ -1653,6 +1854,8 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshDatasetList();
   refreshDatasetCards();
   refreshModelsList();
+  refreshRagStatus();
+  fetchRagDatasets();
 });
 
 // Blinking cursor in terminal

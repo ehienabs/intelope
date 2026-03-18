@@ -85,6 +85,26 @@ intelope train --dataset my-dataset --name my-model --model smollm2-360m --epoch
 intelope chat --model my-model
 ```
 
+### 5. Enable RAG (recommended)
+
+RAG (Retrieval-Augmented Generation) lets your model search your actual documents before answering,
+so it gives answers grounded in what you've written — not hallucinations.
+
+```bash
+# Build a search index from your cleaned dataset
+intelope index --dataset my-dataset
+
+# Chat with RAG enabled
+intelope chat --model my-model --rag
+```
+
+**Without RAG:** The model guesses from what it memorised during training. Low accuracy and high hallucination.
+**With RAG:** Every question first searches your documents, then the relevant excerpts are fed to the model as context.
+
+RAG is **off by default** — you opt in by checking the RAG toggle in the Chat UI or passing `--rag` on the CLI.  Once you've built an index, flip it on and every answer will be grounded in your actual documents.
+
+You can also build the index and toggle RAG from the web dashboard (RAG Index tab + Chat toggle).
+
 ### Or: launch the web UI
 
 ```bash
@@ -243,16 +263,18 @@ intelope/
 │       ├── finetune.py # LoRA via unsloth (fast) or transformers
 │       └── inference.py# model loading and generation
 ├── pipeline/
-│   └── clean.py        # dedup, PII scrub, quality filter
+│   ├── clean.py        # dedup, PII scrub, quality filter
+│   └── rag.py          # RAG: embed, index, retrieve
 ├── ui/
 │   ├── app.py          # FastAPI backend
 │   └── intelope-dashboard.html
 ├── data/
-│   └── datasets/       # per-dataset directories
-│       └── <name>/
-│           ├── uploads/   # raw uploaded files
-│           ├── processed/ # ingested chunks (JSONL)
-│           └── clean.jsonl # cleaned, training-ready
+│   ├── datasets/       # per-dataset directories
+│   │   └── <name>/
+│   │       ├── uploads/   # raw uploaded files
+│   │       ├── processed/ # ingested chunks (JSONL)
+│   │       └── clean.jsonl # cleaned, training-ready
+│   └── rag_index/      # FAISS index + metadata
 └── models/
     └── <model-name>/   # trained LoRA adapters
 ```

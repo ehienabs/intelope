@@ -1,5 +1,6 @@
 """
 Local inference — chat with your fine-tuned model in the terminal.
+Supports optional RAG context injection for grounded answers.
 """
 
 from pathlib import Path
@@ -10,6 +11,13 @@ DEFAULT_SYSTEM = (
     "You are a personal AI assistant trained on the user's own documents, "
     "notes, and browsing history. Answer questions drawing on that personal knowledge. "
     "If you don't know something, say so clearly."
+)
+
+RAG_SYSTEM = (
+    "You are a personal AI assistant. Use the CONTEXT below to answer the user's "
+    "question accurately. Only use information from the context. If the context "
+    "doesn't contain the answer, say you don't have that information.\n\n"
+    "CONTEXT:\n{context}"
 )
 
 
@@ -47,20 +55,47 @@ def load_model(model_dir: Path):
 
 
 def generate(model, tokenizer, messages: list[dict], backend: str,
-             max_new_tokens: int = 512, temperature: float = 0.7) -> str:
-    """Generate a response given a message history."""
+             max_new_tokens: int = 512, temperature: float = 0.7,
+             retriever=None) -> tuple[str, list[dict] | None]:
+    """
+    Generate a response given a message history.
+    If retriever is provided, injects relevant context into the system prompt.
+    Returns (response_text, retrieved_chunks_or_None).
+    """
     import torch
+
+    retrieved = None
+    working_messages = list(messages)
+
+    # RAG: retrieve context for the latest user message
+    if retriever is not None:
+        user_msg = next(
+            (m["content"] for m in reversed(working_messages) if m["role"] == "user"),
+            None,
+        )
+        if user_msg:
+            from pipeline.rag import format_context
+            results = retriever.search(user_msg, top_k=5)
+            if results:
+                retrieved = results
+                context_text = format_context(results)
+                rag_system = RAG_SYSTEM.format(context=context_text)
+                # Replace system message with RAG-augmented one
+                working_messages = [
+                    m if m["role"] != "system" else {"role": "system", "content": rag_system}
+                    for m in working_messages
+                ]
 
     # Use chat template if available
     try:
         prompt = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+            working_messages, tokenize=False, add_generation_prompt=True
         )
     except Exception:
         # Manual fallback
         prompt = "\n".join(
             f"{'User' if m['role']=='user' else 'Assistant'}: {m['content']}"
-            for m in messages
+            for m in working_messages
         ) + "\nAssistant:"
 
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
@@ -76,14 +111,25 @@ def generate(model, tokenizer, messages: list[dict], backend: str,
 
     decoded = tokenizer.decode(output[0][inputs["input_ids"].shape[1]:],
                                skip_special_tokens=True)
-    return decoded.strip()
+    return decoded.strip(), retrieved
 
 
-def chat_loop(model_dir: Path, system_prompt: Optional[str] = None):
+def chat_loop(model_dir: Path, system_prompt: Optional[str] = None,
+              use_rag: bool = False):
     """Interactive terminal chat loop."""
     print(f"Loading model from {model_dir}...")
     model, tokenizer, backend = load_model(model_dir)
-    print(f"Model loaded ({backend} backend)\n")
+    print(f"Model loaded ({backend} backend)")
+
+    retriever = None
+    if use_rag:
+        from pipeline.rag import index_exists, Retriever
+        if index_exists():
+            retriever = Retriever()
+            print("RAG enabled — answers will use your documents as context")
+        else:
+            print("No RAG index found. Build one with: intelope index --dataset <name>")
+    print()
 
     system = system_prompt or DEFAULT_SYSTEM
     history = [{"role": "system", "content": system}]
@@ -106,6 +152,12 @@ def chat_loop(model_dir: Path, system_prompt: Optional[str] = None):
             continue
 
         history.append({"role": "user", "content": user_input})
-        response = generate(model, tokenizer, history, backend)
+        response, retrieved = generate(model, tokenizer, history, backend,
+                                       retriever=retriever)
         history.append({"role": "assistant", "content": response})
+
+        if retrieved:
+            sources = set(r["source"] for r in retrieved if r["source"])
+            if sources:
+                print(f"\n  [Sources: {', '.join(sources)}]")
         print(f"\nAssistant: {response}\n")

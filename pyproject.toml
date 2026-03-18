@@ -27,6 +27,9 @@ dependencies = [
   "peft>=0.10",              # LoRA
   "trl>=0.8",                # SFTTrainer
   "accelerate>=0.29",
+  # RAG
+  "sentence-transformers>=2.2",
+  "faiss-cpu>=1.7",
   # UI
   "gradio>=4.0",
   "fastapi>=0.110",
