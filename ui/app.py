@@ -256,9 +256,15 @@ def list_models():
     models_dir = PROJECT_ROOT / "models"
     models = []
     if models_dir.exists():
-        for d in models_dir.iterdir():
-            if d.is_dir() and (d / "adapter_config.json").exists():
-                models.append({"name": d.name, "path": str(d)})
+        for d in sorted(models_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            cfg_path = d / "adapter_config.json"
+            if d.is_dir() and cfg_path.exists():
+                try:
+                    cfg = json.loads(cfg_path.read_text())
+                    base = cfg.get("base_model_name_or_path", "unknown")
+                except Exception:
+                    base = "unknown"
+                models.append({"name": d.name, "base_model": base})
     return {"models": models}
 
 

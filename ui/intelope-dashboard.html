@@ -991,8 +991,11 @@
         </div>
         <div style="display:flex; gap:10px; align-items:center">
           <span style="font-size:12px; color:var(--muted)">Model:</span>
-          <span id="chat-model-status" style="font-size:12px; color:var(--muted); background:var(--surface2); border:1px solid var(--border); padding:4px 10px; border-radius:6px">No model loaded</span>
-          <button class="btn btn-primary" style="font-size:12px; padding:7px 14px" onclick="loadChatModel('latest')">Load Model</button>
+          <select id="chat-model-select" style="font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; min-width:140px">
+            <option value="" disabled selected>Select a model</option>
+          </select>
+          <span id="chat-model-status" style="font-size:12px; color:var(--muted)"></span>
+          <button class="btn btn-primary" style="font-size:12px; padding:7px 14px" onclick="loadSelectedModel()">Load</button>
           <button class="btn btn-secondary" style="font-size:12px; padding:7px 14px" onclick="clearChat()">Clear</button>
         </div>
       </div>
@@ -1175,29 +1178,60 @@ async function stopTraining() {
 // Chat
 let chatModelLoaded = false;
 
+async function fetchModels() {
+  const select = document.getElementById('chat-model-select');
+  try {
+    const r = await fetch('/api/models');
+    const data = await r.json();
+    // Keep the placeholder, clear old options
+    select.innerHTML = '<option value="" disabled>Select a model</option>';
+    if (data.models && data.models.length) {
+      data.models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.name;
+        const base = m.base_model ? m.base_model.split('/').pop() : '';
+        opt.textContent = m.name + (base ? ' (' + base + ')' : '');
+        select.appendChild(opt);
+      });
+      // Auto-select first model
+      select.value = data.models[0].name;
+    } else {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.disabled = true;
+      opt.textContent = 'No models found';
+      select.appendChild(opt);
+    }
+  } catch(e) { /* ignore */ }
+}
+
+function loadSelectedModel() {
+  const select = document.getElementById('chat-model-select');
+  if (!select.value) { alert('Select a model first.'); return; }
+  loadChatModel(select.value);
+}
+
 async function loadChatModel(modelName) {
   const statusEl = document.getElementById('chat-model-status');
-  statusEl.textContent = 'Loading model...';
+  statusEl.textContent = 'Loading...';
   statusEl.style.color = 'var(--accent3)';
   try {
     const r = await fetch('/api/chat/load', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({model: modelName || 'latest'})
+      body: JSON.stringify({model: modelName})
     });
     const data = await r.json();
     if (data.error) {
-      statusEl.textContent = 'No model loaded';
-      statusEl.style.color = 'var(--muted)';
+      statusEl.textContent = '';
       alert('Failed to load model: ' + data.error);
       return;
     }
     chatModelLoaded = true;
-    statusEl.textContent = data.model + ' (' + data.backend + ')';
+    statusEl.textContent = '✓ ' + data.model + ' (' + data.backend + ')';
     statusEl.style.color = 'var(--accent2)';
   } catch(e) {
-    statusEl.textContent = 'No model loaded';
-    statusEl.style.color = 'var(--muted)';
+    statusEl.textContent = '';
   }
 }
 
@@ -1219,8 +1253,9 @@ async function sendMessage() {
   messages.scrollTop = messages.scrollHeight;
 
   if (!chatModelLoaded) {
-    // Try to auto-load the model
-    await loadChatModel('latest');
+    // Try to auto-load the selected model
+    const sel = document.getElementById('chat-model-select');
+    await loadChatModel(sel.value || 'latest');
     if (!chatModelLoaded) {
       messages.innerHTML += `
         <div class="message">
@@ -1442,6 +1477,7 @@ function refreshChunks() {
 document.addEventListener('DOMContentLoaded', () => {
   refreshStatus();
   refreshChunks();
+  fetchModels();
 });
 
 // Blinking cursor in terminal
