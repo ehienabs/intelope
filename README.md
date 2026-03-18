@@ -55,22 +55,33 @@ intelope ingest ~/Library/Application\ Support/Google/Chrome/Default/History --t
 intelope ingest ~/Downloads/WhatsApp\ Chat.txt --type chat
 ```
 
-### 2. Run the cleaning pipeline
+### 2. Create a named dataset
+
+Run deduplication, PII scrubbing, and quality filtering on your ingested data, then save as a named dataset:
 
 ```bash
-intelope clean   # dedup + PII scrub + quality filter
+intelope dataset create my-notes-v1
 ```
 
-### 3. Train
+Manage datasets:
 
 ```bash
-intelope train --model smollm2-1.7b --epochs 3
+intelope dataset list            # list all saved datasets
+intelope dataset delete old-data # delete a dataset
+```
+
+### 3. Train a named model
+
+Pick a dataset and name your model:
+
+```bash
+intelope train --dataset my-notes-v1 --name my-assistant --model smollm2-360m --epochs 3
 ```
 
 ### 4. Chat
 
 ```bash
-intelope chat
+intelope chat --model my-assistant
 ```
 
 ### Or: launch the web UI
@@ -79,6 +90,13 @@ intelope chat
 intelope start
 # → http://localhost:7860
 ```
+
+The web dashboard provides the same workflow in a visual interface:
+
+1. **Ingest** — upload files (drag-and-drop or folder upload)
+2. **Dataset** — create named datasets from ingested data, browse raw chunks
+3. **Train** — select a dataset, name your model, pick a base model, and train
+4. **Chat** — choose a trained model from the dropdown and chat
 
 ---
 
@@ -158,7 +176,7 @@ With defaults (batch=2, grad_accum=4, epochs=3):
 **Tips:**
 - **Minimum viable**: ~200 chunks (~50–100 pages of text)
 - **More epochs help small datasets** — with 200 chunks, try 5–8 epochs instead of 3
-- **Quality > quantity** — always run `intelope clean` first; 300 clean chunks beat 3,000 noisy ones
+- **Quality > quantity** — always create a dataset first; 300 clean chunks beat 3,000 noisy ones
 
 ---
 
@@ -181,18 +199,21 @@ intelope/
 │   ├── notes.py        # markdown / Obsidian
 │   ├── documents.py    # PDF / EPUB
 │   ├── chat.py         # WhatsApp / Telegram / MBOX
-│   └── browser.py      # Chrome / Firefox / bookmarks
+│   ├── browser.py      # Chrome / Firefox / bookmarks
+│   └── training/
+│       ├── finetune.py # LoRA via unsloth (fast) or transformers
+│       └── inference.py# model loading and generation
 ├── pipeline/
 │   └── clean.py        # dedup, PII scrub, quality filter
-├── training/
-│   ├── finetune.py     # LoRA via unsloth (fast) or transformers
-│   └── inference.py    # terminal chat loop
 ├── ui/
-│   └── dashboard.html  # web dashboard
-└── data/
-    ├── raw/
-    ├── processed/
-    └── exports/
+│   ├── app.py          # FastAPI backend
+│   └── intelope-dashboard.html
+├── data/
+│   ├── uploads/        # raw uploaded files
+│   ├── processed/      # ingested chunks (JSONL)
+│   └── datasets/       # named datasets (cleaned, deduplicated)
+└── models/
+    └── <model-name>/   # trained LoRA adapters
 ```
 
 ---
