@@ -308,6 +308,8 @@ def _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=0.05,
         bias="none",
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                         "gate_proj", "up_proj", "down_proj"],
     )
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
