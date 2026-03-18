@@ -10,9 +10,8 @@ Just you, your notes, and a model that actually knows your world.
 ## Quickstart
 
 ```bash
-pip install intelope
-# for faster training (optional, requires compatible GPU):
-pip install "intelope[fast]"
+pip install git+https://github.com/ehienabs/intelope.git
+intelope start
 ```
 
 ### 1. Ingest your data
@@ -151,7 +150,7 @@ With defaults (batch=2, grad_accum=4, epochs=3):
 
 ```
 intelope/
-├── cli.py              # Typer CLI entrypoint
+├── cli.py              # CLI entrypoint
 ├── ingestion/
 │   ├── router.py       # auto-detects source type
 │   ├── notes.py        # markdown / Obsidian
