@@ -35,8 +35,9 @@ async def upload_files(files: List[UploadFile] = File(...)):
 
     results = []
     for f in files:
-        # Save to uploads/
-        dest = UPLOAD_DIR / f.filename
+        # Sanitize filename — folder uploads send relative paths like "folder/sub/file.md"
+        safe_name = Path(f.filename).name
+        dest = UPLOAD_DIR / safe_name
         content = await f.read()
         dest.write_bytes(content)
 

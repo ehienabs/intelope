@@ -802,11 +802,19 @@
 
       <div class="card">
         <div class="card-title">Upload Files</div>
-        <div class="upload-zone" id="upload-zone">
-          <input type="file" multiple accept=".pdf,.epub,.md,.txt,.json,.mbox,.html,.csv" onchange="handleUpload(this)">
-          <div class="upload-icon">⬆</div>
-          <div class="upload-label">Drop files here or click to browse</div>
-          <div class="upload-hint" style="margin-top:8px">.pdf • .epub • .md • .txt • .json • .mbox • .html</div>
+        <div style="display:flex; gap:12px; margin-bottom:12px">
+          <div class="upload-zone" id="upload-zone" style="flex:1">
+            <input type="file" multiple accept=".pdf,.epub,.md,.txt,.json,.mbox,.html,.csv" onchange="handleUpload(this)">
+            <div class="upload-icon">⬆</div>
+            <div class="upload-label">Drop files here or click to browse</div>
+            <div class="upload-hint" style="margin-top:8px">.pdf • .epub • .md • .txt • .json • .mbox • .html</div>
+          </div>
+          <div class="upload-zone" id="upload-folder-zone" style="flex:1">
+            <input type="file" webkitdirectory mozdirectory directory onchange="handleUpload(this)">
+            <div class="upload-icon">📁</div>
+            <div class="upload-label">Upload a folder</div>
+            <div class="upload-hint" style="margin-top:8px">Select an entire folder (e.g. Obsidian vault)</div>
+          </div>
         </div>
         <div id="upload-list" style="margin-top:16px"></div>
       </div>
