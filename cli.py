@@ -1,19 +1,21 @@
 """
 Intelope CLI — train small personal LLMs on your own data.
 Usage:
-    intelope start                  # launch web UI
-    intelope ingest <path>          # ingest data from a file or directory
-    intelope dataset create <name>  # create a named dataset from ingested data
-    intelope dataset list           # list saved datasets
-    intelope dataset delete <name>  # delete a dataset
-    intelope train --dataset <name> --name <model-name>  # train a named model
-    intelope chat --model <name>    # chat with a trained model
-    intelope status                 # show current stats
+    intelope start                           # launch web UI
+    intelope dataset create <name>           # create a new dataset
+    intelope dataset list                    # list datasets and status
+    intelope dataset delete <name>           # delete a dataset
+    intelope ingest <path> --dataset <name>  # ingest files into a dataset
+    intelope dataset clean <name>            # clean a dataset for training
+    intelope train --dataset <name> --name <model>  # train a model
+    intelope chat --model <name>             # chat with a trained model
+    intelope status                          # show current stats
 """
 
 import typer
 from pathlib import Path
 from typing import Optional
+import re
 from rich.console import Console
 from rich.table import Table
 from rich import print as rprint
@@ -23,9 +25,15 @@ app = typer.Typer(
     help="Train small personal LLMs on your own data — privately, locally.",
     add_completion=False,
 )
-dataset_app = typer.Typer(help="Create and manage named datasets.")
+dataset_app = typer.Typer(help="Create and manage datasets.")
 app.add_typer(dataset_app, name="dataset")
 console = Console()
+
+DATASETS_DIR = Path("data/datasets")
+
+
+def _sanitize(name: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', name.strip())
 
 
 @app.command()
@@ -42,24 +50,34 @@ def start(
 @app.command()
 def ingest(
     source: Path = typer.Argument(..., help="File or directory to ingest"),
+    dataset: str = typer.Option(..., "--dataset", "-d", help="Dataset to ingest into"),
     source_type: Optional[str] = typer.Option(
         None, "--type", "-t",
         help="Source type: notes | documents | browser | chat (auto-detected if omitted)"
     ),
-    output_dir: Path = typer.Option(Path("data/processed"), "--output", "-o"),
 ):
-    """Ingest data from a file or directory into the training dataset."""
+    """Ingest data from a file or directory into a dataset."""
     from ingestion.router import ingest_source
-    
+
     if not source.exists():
         rprint(f"[red]Error:[/red] Path does not exist: {source}")
         raise typer.Exit(1)
 
-    with console.status(f"[bold]Ingesting {source}...[/bold]"):
+    safe = _sanitize(dataset)
+    ds_dir = DATASETS_DIR / safe
+    if not ds_dir.exists():
+        rprint(f"[red]Error:[/red] Dataset not found: {dataset}")
+        rprint("[dim]Run [bold]intelope dataset create <name>[/bold] first.[/dim]")
+        raise typer.Exit(1)
+
+    output_dir = ds_dir / "processed"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    with console.status(f"[bold]Ingesting {source} into dataset '{safe}'...[/bold]"):
         result = ingest_source(source, source_type, output_dir)
 
     rprint(f"[green]✓[/green] Ingested [bold]{result['chunks']}[/bold] chunks "
-           f"from [bold]{result['files']}[/bold] files → {output_dir}")
+           f"from [bold]{result['files']}[/bold] files → {safe}")
 
 
 @app.command()
@@ -67,28 +85,25 @@ def train(
     base_model: str = typer.Option("smollm2-360m", "--model", "-m", help="Base model to fine-tune"),
     dataset: str = typer.Option(..., "--dataset", "-d", help="Named dataset to train on"),
     name: str = typer.Option("latest", "--name", "-n", help="Name for the trained model"),
-    data_dir: Path = typer.Option(Path("data/datasets"), "--data-dir", hidden=True),
     output_dir: Path = typer.Option(Path("models/"), "--output"),
     epochs: int = typer.Option(3, "--epochs", "-e"),
     lora_r: int = typer.Option(16, "--lora-r"),
 ):
-    """Fine-tune a base model on a named dataset using LoRA."""
-    import re
+    """Fine-tune a base model on a cleaned dataset using LoRA."""
+    import tempfile
 
-    # Resolve the dataset file
-    safe_ds = re.sub(r'[^a-zA-Z0-9_-]', '_', dataset)
-    ds_path = data_dir / f"{safe_ds}.jsonl"
-    if not ds_path.exists():
-        rprint(f"[red]Error:[/red] Dataset not found: {dataset}")
-        rprint("[dim]Run [bold]intelope dataset list[/bold] to see available datasets.[/dim]")
+    safe_ds = _sanitize(dataset)
+    ds_clean = DATASETS_DIR / safe_ds / "clean.jsonl"
+    if not ds_clean.exists():
+        rprint(f"[red]Error:[/red] Dataset '{dataset}' not found or not cleaned yet.")
+        rprint("[dim]Run [bold]intelope dataset clean {dataset}[/bold] first.[/dim]")
         raise typer.Exit(1)
 
     # Create a temp dir with just this dataset for the trainer
-    import tempfile
     tmp = Path(tempfile.mkdtemp())
-    (tmp / ds_path.name).symlink_to(ds_path.resolve())
+    (tmp / "clean.jsonl").symlink_to(ds_clean.resolve())
 
-    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+    safe_name = _sanitize(name) or "latest"
 
     from ingestion.training.finetune import run_finetune
 
@@ -127,25 +142,41 @@ def chat(
 @dataset_app.command("create")
 def dataset_create(
     name: str = typer.Argument(..., help="Name for the dataset"),
-    input_dir: Path = typer.Option(Path("data/processed"), "--input", "-i"),
 ):
-    """Create a named dataset from ingested data (runs dedup + PII scrub + quality filter)."""
-    import re
-
-    if not input_dir.exists() or not list(input_dir.glob("*.jsonl")):
-        rprint("[red]Error:[/red] No processed data found. Run [bold]intelope ingest[/bold] first.")
+    """Create a new empty dataset."""
+    safe_name = _sanitize(name)
+    ds_dir = DATASETS_DIR / safe_name
+    if ds_dir.exists():
+        rprint(f"[red]Error:[/red] Dataset '{safe_name}' already exists.")
         raise typer.Exit(1)
 
-    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
-    datasets_dir = Path("data/datasets")
-    datasets_dir.mkdir(parents=True, exist_ok=True)
-    output_path = datasets_dir / f"{safe_name}.jsonl"
+    (ds_dir / "uploads").mkdir(parents=True)
+    (ds_dir / "processed").mkdir(parents=True)
+    rprint(f"[green]✓[/green] Dataset [bold]{safe_name}[/bold] created. "
+           f"Now ingest data with: [bold]intelope ingest <path> --dataset {safe_name}[/bold]")
 
-    with console.status(f"[bold]Creating dataset '{safe_name}'...[/bold]"):
+
+@dataset_app.command("clean")
+def dataset_clean(
+    name: str = typer.Argument(..., help="Name of the dataset to clean"),
+):
+    """Run dedup, PII scrubbing, and quality filtering on a dataset."""
+    safe_name = _sanitize(name)
+    ds_dir = DATASETS_DIR / safe_name
+    processed = ds_dir / "processed"
+
+    if not ds_dir.exists():
+        rprint(f"[red]Error:[/red] Dataset not found: {name}")
+        raise typer.Exit(1)
+    if not processed.exists() or not list(processed.glob("*.jsonl")):
+        rprint("[red]Error:[/red] No ingested data in this dataset. Ingest files first.")
+        raise typer.Exit(1)
+
+    with console.status(f"[bold]Cleaning dataset '{safe_name}'...[/bold]"):
         from pipeline.clean import run_pipeline
-        stats = run_pipeline(input_dir, output_path)
+        stats = run_pipeline(processed, ds_dir / "clean.jsonl")
 
-    rprint(f"[green]✓[/green] Dataset [bold]{safe_name}[/bold] created: "
+    rprint(f"[green]✓[/green] Dataset [bold]{safe_name}[/bold] cleaned: "
            f"[bold]{stats['output_records']}[/bold] records "
            f"({stats['removed_quality']} low-quality, "
            f"{stats['removed_duplicates']} duplicates, "
@@ -154,22 +185,39 @@ def dataset_create(
 
 @dataset_app.command("list")
 def dataset_list():
-    """List all saved datasets."""
-    datasets_dir = Path("data/datasets")
-    if not datasets_dir.exists() or not list(datasets_dir.glob("*.jsonl")):
+    """List all datasets and their status."""
+    if not DATASETS_DIR.exists():
+        rprint("[dim]No datasets found. Create one with [bold]intelope dataset create <name>[/bold][/dim]")
+        return
+
+    dirs = [d for d in sorted(DATASETS_DIR.iterdir()) if d.is_dir()]
+    if not dirs:
         rprint("[dim]No datasets found. Create one with [bold]intelope dataset create <name>[/bold][/dim]")
         return
 
     table = Table(title="Datasets", show_header=True, header_style="bold cyan")
     table.add_column("Name", style="bold")
-    table.add_column("Records", justify="right")
-    table.add_column("Size", justify="right")
+    table.add_column("Files", justify="right")
+    table.add_column("Chunks", justify="right")
+    table.add_column("Status")
 
-    for f in sorted(datasets_dir.glob("*.jsonl")):
-        count = sum(1 for line in f.open() if line.strip())
-        size = f.stat().st_size
-        size_str = f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{size / 1024 / 1024:.1f} MB"
-        table.add_row(f.stem, str(count), size_str)
+    for d in dirs:
+        uploads = d / "uploads"
+        processed = d / "processed"
+        clean = d / "clean.jsonl"
+        file_count = sum(1 for _ in uploads.glob("*")) if uploads.exists() else 0
+        chunk_count = 0
+        if processed.exists():
+            for f in processed.glob("*.jsonl"):
+                chunk_count += sum(1 for line in f.open() if line.strip())
+        if clean.exists():
+            clean_count = sum(1 for line in clean.open() if line.strip())
+            status = f"[green]✓ Ready ({clean_count} records)[/green]"
+        elif chunk_count > 0:
+            status = "[yellow]Needs cleaning[/yellow]"
+        else:
+            status = "[dim]Empty[/dim]"
+        table.add_row(d.name, str(file_count), str(chunk_count), status)
 
     console.print(table)
 
@@ -178,14 +226,14 @@ def dataset_list():
 def dataset_delete(
     name: str = typer.Argument(..., help="Name of the dataset to delete"),
 ):
-    """Delete a saved dataset."""
-    import re
-    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
-    path = Path("data/datasets") / f"{safe_name}.jsonl"
-    if not path.exists():
+    """Delete a dataset and all its data."""
+    import shutil
+    safe_name = _sanitize(name)
+    ds_dir = DATASETS_DIR / safe_name
+    if not ds_dir.exists():
         rprint(f"[red]Error:[/red] Dataset not found: {name}")
         raise typer.Exit(1)
-    path.unlink()
+    shutil.rmtree(ds_dir)
     rprint(f"[green]✓[/green] Deleted dataset [bold]{name}[/bold]")
 
 
@@ -194,17 +242,23 @@ def dataset_delete(
 @app.command()
 def status():
     """Show current dataset stats and available models."""
-    import json
-
-    processed = Path("data/processed")
-    datasets_dir = Path("data/datasets")
     models_dir = Path("models")
 
-    chunk_count = sum(1 for f in processed.glob("*.jsonl")
-                      for line in f.open() if line.strip()) if processed.exists() else 0
-
-    # Count datasets
-    dataset_count = len(list(datasets_dir.glob("*.jsonl"))) if datasets_dir.exists() else 0
+    # Count datasets and their data
+    dataset_count = 0
+    total_chunks = 0
+    ready_count = 0
+    if DATASETS_DIR.exists():
+        for d in DATASETS_DIR.iterdir():
+            if not d.is_dir():
+                continue
+            dataset_count += 1
+            processed = d / "processed"
+            if processed.exists():
+                for f in processed.glob("*.jsonl"):
+                    total_chunks += sum(1 for line in f.open() if line.strip())
+            if (d / "clean.jsonl").exists():
+                ready_count += 1
 
     # Count models (only dirs with adapter_config.json)
     model_names = []
@@ -217,19 +271,14 @@ def status():
     table.add_column("Item", style="bold")
     table.add_column("Value")
 
-    table.add_row("Ingested chunks", str(chunk_count))
-    table.add_row("Saved datasets", str(dataset_count))
+    table.add_row("Datasets", str(dataset_count))
+    table.add_row("Ready for training", str(ready_count))
+    table.add_row("Total chunks", str(total_chunks))
     table.add_row("Trained models", str(len(model_names)))
     if model_names:
         table.add_row("Model names", ", ".join(model_names))
 
     console.print(table)
-
-    if dataset_count > 0:
-        rprint("\n[dim]Datasets:[/dim]")
-        for f in sorted(datasets_dir.glob("*.jsonl")):
-            count = sum(1 for line in f.open() if line.strip())
-            rprint(f"  [cyan]{f.stem}[/cyan] — {count} records")
 
 
 if __name__ == "__main__":

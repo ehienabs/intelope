@@ -1,9 +1,7 @@
 # Intelope
 
-> Train small personal LLMs on your own data — privately, locally.
+> Train small personal LLMs on your own data locally.
 
-Your data never leaves your machine. No cloud APIs. No corporate data pipelines.
-Just you, your notes, and a model that actually knows your world.
 
 ---
 
@@ -39,49 +37,52 @@ pip install git+https://github.com/ehienabs/intelope.git
 intelope start
 ```
 
-### 1. Ingest your data
+### 1. Create a dataset
+
+```bash
+intelope dataset create my-dataset
+```
+
+### 2. Ingest your data into the dataset
 
 ```bash
 # Notes (markdown, Obsidian vault, plaintext)
-intelope ingest ~/Documents/notes
+intelope ingest ~/Documents/notes --dataset my-dataset
 
 # PDF/EPUB documents
-intelope ingest ~/Documents/papers --type documents
-
-# Browser history (Chrome)
-intelope ingest ~/Library/Application\ Support/Google/Chrome/Default/History --type browser
+intelope ingest ~/Documents/papers --dataset my-dataset --type documents
 
 # WhatsApp/Telegram export
-intelope ingest ~/Downloads/WhatsApp\ Chat.txt --type chat
+intelope ingest ~/Downloads/WhatsApp\ Chat.txt --dataset my-dataset --type chat
 ```
 
-### 2. Create a named dataset
+### 3. Clean the dataset
 
-Run deduplication, PII scrubbing, and quality filtering on your ingested data, then save as a named dataset:
+Run deduplication, PII scrubbing, and quality filtering:
 
 ```bash
-intelope dataset create my-notes-v1
+intelope dataset clean my-dataset
 ```
 
 Manage datasets:
 
 ```bash
-intelope dataset list            # list all saved datasets
+intelope dataset list            # list all datasets and status
 intelope dataset delete old-data # delete a dataset
 ```
 
-### 3. Train a named model
+### 4. Train a named model
 
-Pick a dataset and name your model:
+Pick a cleaned dataset and name your model:
 
 ```bash
-intelope train --dataset my-notes-v1 --name my-assistant --model smollm2-360m --epochs 3
+intelope train --dataset my-dataset --name my-model --model smollm2-360m --epochs 3
 ```
 
 ### 4. Chat
 
 ```bash
-intelope chat --model my-assistant
+intelope chat --model my-model
 ```
 
 ### Or: launch the web UI
@@ -93,10 +94,9 @@ intelope start
 
 The web dashboard provides the same workflow in a visual interface:
 
-1. **Ingest** — upload files (drag-and-drop or folder upload)
-2. **Dataset** — create named datasets from ingested data, browse raw chunks
-3. **Train** — select a dataset, name your model, pick a base model, and train
-4. **Chat** — choose a trained model from the dropdown and chat
+1. **Ingest** — create a dataset, upload files into it, then clean
+2. **Train** — select a cleaned dataset, name your model, pick a base model, and train
+3. **Chat** — choose a trained model from the dropdown and chat
 
 ---
 
@@ -209,9 +209,11 @@ intelope/
 │   ├── app.py          # FastAPI backend
 │   └── intelope-dashboard.html
 ├── data/
-│   ├── uploads/        # raw uploaded files
-│   ├── processed/      # ingested chunks (JSONL)
-│   └── datasets/       # named datasets (cleaned, deduplicated)
+│   └── datasets/       # per-dataset directories
+│       └── <name>/
+│           ├── uploads/   # raw uploaded files
+│           ├── processed/ # ingested chunks (JSONL)
+│           └── clean.jsonl # cleaned, training-ready
 └── models/
     └── <model-name>/   # trained LoRA adapters
 ```

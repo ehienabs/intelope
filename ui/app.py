@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import List
 import json
+import re
 import shutil
 import tempfile
 import threading
@@ -15,12 +16,13 @@ import uvicorn
 PROJECT_ROOT = Path.cwd()
 DASHBOARD = Path(__file__).resolve().parent / "intelope-dashboard.html"
 DATA_DIR = PROJECT_ROOT / "data"
-PROCESSED_DIR = DATA_DIR / "processed"
-CLEAN_DIR = DATA_DIR / "clean"
-UPLOAD_DIR = DATA_DIR / "uploads"
 DATASETS_DIR = DATA_DIR / "datasets"
 
 app = FastAPI(title="Intelope")
+
+
+def _sanitize(name: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', name.strip())
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -28,38 +30,101 @@ def index():
     return DASHBOARD.read_text(encoding="utf-8")
 
 
-@app.post("/api/upload")
-async def upload_files(files: List[UploadFile] = File(...)):
-    """Save uploaded files and run ingestion on each."""
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+# ── Dataset management ────────────────────────────────────────────────────────
+
+@app.post("/api/datasets/create")
+async def create_dataset(request: Request):
+    """Create a new empty dataset directory."""
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"error": "Dataset name is required."}, status_code=400)
+    safe = _sanitize(name)
+    ds_dir = DATASETS_DIR / safe
+    if ds_dir.exists():
+        return JSONResponse({"error": f"Dataset '{safe}' already exists."}, status_code=409)
+    (ds_dir / "uploads").mkdir(parents=True)
+    (ds_dir / "processed").mkdir(parents=True)
+    return {"name": safe, "status": "created"}
+
+
+@app.get("/api/datasets")
+def list_datasets():
+    """Return all datasets with their status."""
+    datasets = []
+    if not DATASETS_DIR.exists():
+        return {"datasets": datasets}
+    for d in sorted(DATASETS_DIR.iterdir()):
+        if not d.is_dir():
+            continue
+        processed_dir = d / "processed"
+        clean_file = d / "clean.jsonl"
+        raw_count = sum(1 for _ in (d / "uploads").glob("*")) if (d / "uploads").exists() else 0
+        chunk_count = 0
+        if processed_dir.exists():
+            for f in processed_dir.glob("*.jsonl"):
+                chunk_count += sum(1 for line in f.open() if line.strip())
+        clean_count = 0
+        if clean_file.exists():
+            clean_count = sum(1 for line in clean_file.open() if line.strip())
+        datasets.append({
+            "name": d.name,
+            "files": raw_count,
+            "chunks": chunk_count,
+            "clean_records": clean_count,
+            "ready": clean_count > 0,
+        })
+    return {"datasets": datasets}
+
+
+@app.delete("/api/datasets/{name}")
+def delete_dataset(name: str):
+    """Delete a dataset and all its data."""
+    safe = _sanitize(name)
+    ds_dir = DATASETS_DIR / safe
+    if not ds_dir.exists():
+        return JSONResponse({"error": f"Dataset not found: {name}"}, status_code=404)
+    shutil.rmtree(ds_dir)
+    return {"status": "deleted", "name": safe}
+
+
+@app.post("/api/datasets/{name}/upload")
+async def upload_to_dataset(name: str, files: List[UploadFile] = File(...)):
+    """Upload files into a specific dataset and run ingestion."""
+    safe = _sanitize(name)
+    ds_dir = DATASETS_DIR / safe
+    if not ds_dir.exists():
+        return JSONResponse({"error": f"Dataset not found: {name}"}, status_code=404)
+
+    upload_dir = ds_dir / "uploads"
+    processed_dir = ds_dir / "processed"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    processed_dir.mkdir(parents=True, exist_ok=True)
 
     results = []
     for f in files:
-        # Sanitize filename — folder uploads send relative paths like "folder/sub/file.md"
         safe_name = Path(f.filename).name
-        dest = UPLOAD_DIR / safe_name
+        dest = upload_dir / safe_name
         content = await f.read()
         dest.write_bytes(content)
 
-        # Detect type and ingest
         ext = dest.suffix.lower()
         try:
             if ext in {".md", ".txt", ".org", ".markdown"}:
                 from ingestion.notes import ingest_notes
-                stats = ingest_notes(dest, PROCESSED_DIR)
+                stats = ingest_notes(dest, processed_dir)
             elif ext in {".pdf", ".epub"}:
                 from ingestion.documents import ingest_documents
-                stats = ingest_documents(dest, PROCESSED_DIR)
+                stats = ingest_documents(dest, processed_dir)
             elif ext == ".json":
                 from ingestion.chat import ingest_chat
-                stats = ingest_chat(dest, PROCESSED_DIR)
+                stats = ingest_chat(dest, processed_dir)
             elif ext == ".mbox":
                 from ingestion.chat import ingest_chat
-                stats = ingest_chat(dest, PROCESSED_DIR)
+                stats = ingest_chat(dest, processed_dir)
             elif ext == ".html":
                 from ingestion.browser import ingest_browser
-                stats = ingest_browser(dest, PROCESSED_DIR)
+                stats = ingest_browser(dest, processed_dir)
             else:
                 results.append({"file": f.filename, "error": f"Unsupported format: {ext}"})
                 continue
@@ -70,76 +135,33 @@ async def upload_files(files: List[UploadFile] = File(...)):
     return JSONResponse({"results": results})
 
 
-@app.get("/api/status")
-def get_status():
-    """Return current dataset and pipeline stats."""
+@app.post("/api/datasets/{name}/clean")
+def clean_dataset(name: str):
+    """Run cleaning pipeline on a dataset's processed data."""
+    safe = _sanitize(name)
+    ds_dir = DATASETS_DIR / safe
+    if not ds_dir.exists():
+        return JSONResponse({"error": f"Dataset not found: {name}"}, status_code=404)
+
+    processed_dir = ds_dir / "processed"
+    if not processed_dir.exists() or not list(processed_dir.glob("*.jsonl")):
+        return JSONResponse({"error": "No ingested data in this dataset. Upload files first."}, status_code=400)
+
+    from pipeline.clean import run_pipeline
+    output_path = ds_dir / "clean.jsonl"
+    stats = run_pipeline(processed_dir, output_path)
+    stats["name"] = safe
+    return stats
+
+
+@app.get("/api/datasets/{name}/chunks")
+def get_dataset_chunks(name: str):
+    """Return processed chunks for a specific dataset."""
+    safe = _sanitize(name)
+    processed_dir = DATASETS_DIR / safe / "processed"
     chunks = []
-    source_counts = {}
-
-    if PROCESSED_DIR.exists():
-        for jsonl_file in PROCESSED_DIR.glob("*.jsonl"):
-            with jsonl_file.open() as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                        chunks.append(record)
-                        stype = record.get("source_type", "unknown")
-                        if stype not in source_counts:
-                            source_counts[stype] = {"files": set(), "chunks": 0}
-                        source_counts[stype]["files"].add(record.get("source", ""))
-                        source_counts[stype]["chunks"] += 1
-                    except json.JSONDecodeError:
-                        continue
-
-    # Count cleaned
-    clean_count = 0
-    pii_count = 0
-    clean_path = CLEAN_DIR / "merged.jsonl"
-    if clean_path.exists():
-        with clean_path.open() as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        rec = json.loads(line)
-                        clean_count += 1
-                        if rec.get("pii_scrubbed"):
-                            pii_count += 1
-                    except json.JSONDecodeError:
-                        continue
-
-    # Count models — only directories with adapter_config.json are real models
-    models_dir = PROJECT_ROOT / "models"
-    model_count = 0
-    model_list = []
-    if models_dir.exists():
-        for d in models_dir.iterdir():
-            if d.is_dir() and (d / "adapter_config.json").exists():
-                model_count += 1
-                model_list.append(d.name)
-
-    # Serialize source_counts (sets aren't JSON-serializable)
-    sources = {}
-    for stype, info in source_counts.items():
-        sources[stype] = {"files": len(info["files"]), "chunks": info["chunks"]}
-
-    return {
-        "total_chunks": len(chunks),
-        "clean_chunks": clean_count,
-        "pii_scrubbed": pii_count,
-        "models_trained": model_count,
-        "sources": sources,
-    }
-
-
-@app.get("/api/chunks")
-def get_chunks():
-    """Return all processed chunks for the dataset viewer."""
-    chunks = []
-    if PROCESSED_DIR.exists():
-        for jsonl_file in PROCESSED_DIR.glob("*.jsonl"):
+    if processed_dir.exists():
+        for jsonl_file in processed_dir.glob("*.jsonl"):
             with jsonl_file.open() as f:
                 for line in f:
                     line = line.strip()
@@ -152,62 +174,69 @@ def get_chunks():
     return {"chunks": chunks}
 
 
-@app.post("/api/clean")
-def run_clean():
-    """Run the cleaning pipeline on processed data."""
-    if not PROCESSED_DIR.exists() or not list(PROCESSED_DIR.glob("*.jsonl")):
-        return JSONResponse({"error": "No processed data found. Ingest files first."}, status_code=400)
+# ── Legacy endpoints (for backward compat) ────────────────────────────────────
 
-    from pipeline.clean import run_pipeline
-    output_path = CLEAN_DIR / "merged.jsonl"
-    stats = run_pipeline(PROCESSED_DIR, output_path)
-    return stats
+@app.get("/api/status")
+def get_status():
+    """Return current dataset and pipeline stats."""
+    total_chunks = 0
+    clean_total = 0
+    pii_count = 0
+    source_counts = {}
 
+    if DATASETS_DIR.exists():
+        for ds_dir in DATASETS_DIR.iterdir():
+            if not ds_dir.is_dir():
+                continue
+            processed = ds_dir / "processed"
+            if processed.exists():
+                for jsonl_file in processed.glob("*.jsonl"):
+                    with jsonl_file.open() as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                record = json.loads(line)
+                                total_chunks += 1
+                                stype = record.get("source_type", "unknown")
+                                if stype not in source_counts:
+                                    source_counts[stype] = {"files": set(), "chunks": 0}
+                                source_counts[stype]["files"].add(record.get("source", ""))
+                                source_counts[stype]["chunks"] += 1
+                            except json.JSONDecodeError:
+                                continue
+            clean_file = ds_dir / "clean.jsonl"
+            if clean_file.exists():
+                with clean_file.open() as f:
+                    for line in f:
+                        if line.strip():
+                            try:
+                                rec = json.loads(line)
+                                clean_total += 1
+                                if rec.get("pii_scrubbed"):
+                                    pii_count += 1
+                            except json.JSONDecodeError:
+                                continue
 
-@app.get("/api/datasets")
-def list_datasets():
-    """Return available named datasets for training."""
-    datasets = []
-    DATASETS_DIR.mkdir(parents=True, exist_ok=True)
-    for f in sorted(DATASETS_DIR.glob("*.jsonl")):
-        count = sum(1 for line in f.open() if line.strip())
-        datasets.append({"name": f.stem, "records": count})
-    return {"datasets": datasets}
+    models_dir = PROJECT_ROOT / "models"
+    model_count = 0
+    if models_dir.exists():
+        for d in models_dir.iterdir():
+            if d.is_dir() and (d / "adapter_config.json").exists():
+                model_count += 1
 
+    sources = {}
+    for stype, info in source_counts.items():
+        sources[stype] = {"files": len(info["files"]), "chunks": info["chunks"]}
 
-@app.post("/api/datasets/create")
-async def create_dataset(request: Request):
-    """Run the cleaning pipeline and save as a named dataset."""
-    if not PROCESSED_DIR.exists() or not list(PROCESSED_DIR.glob("*.jsonl")):
-        return JSONResponse({"error": "No processed data found. Ingest files first."}, status_code=400)
-
-    body = await request.json()
-    name = body.get("name", "").strip()
-    if not name:
-        return JSONResponse({"error": "Dataset name is required."}, status_code=400)
-
-    import re as _re
-    safe_name = _re.sub(r'[^a-zA-Z0-9_-]', '_', name)
-
-    DATASETS_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = DATASETS_DIR / f"{safe_name}.jsonl"
-
-    from pipeline.clean import run_pipeline
-    stats = run_pipeline(PROCESSED_DIR, output_path)
-    stats["name"] = safe_name
-    return stats
-
-
-@app.delete("/api/datasets/{name}")
-def delete_dataset(name: str):
-    """Delete a named dataset."""
-    import re as _re
-    safe_name = _re.sub(r'[^a-zA-Z0-9_-]', '_', name)
-    path = DATASETS_DIR / f"{safe_name}.jsonl"
-    if not path.exists():
-        return JSONResponse({"error": f"Dataset not found: {name}"}, status_code=404)
-    path.unlink()
-    return {"status": "deleted", "name": safe_name}
+    return {
+        "total_chunks": total_chunks,
+        "clean_chunks": clean_total,
+        "pii_scrubbed": pii_count,
+        "models_trained": model_count,
+        "sources": sources,
+    }
 
 
 # ── Training state ────────────────────────────────────────────────────────────
@@ -231,25 +260,18 @@ async def start_training(request: Request):
     lr = float(body.get("lr", 2e-4))
     batch_size = int(body.get("batch_size", 2))
     max_seq_length = int(body.get("max_seq_length", 2048))
-    output_name = body.get("output_name", "latest").strip() or "latest"
-    # Sanitize output name — allow only alphanumeric, hyphens, underscores
-    import re as _re
-    output_name = _re.sub(r'[^a-zA-Z0-9_-]', '_', output_name)
+    output_name = _sanitize(body.get("output_name", "latest")) or "latest"
     dataset_choice = body.get("dataset", "").strip()
 
-    # Resolve dataset file
-    import re as _re
-    safe_ds = _re.sub(r'[^a-zA-Z0-9_-]', '_', dataset_choice) if dataset_choice else ""
-    ds_path = DATASETS_DIR / f"{safe_ds}.jsonl" if safe_ds else None
-    if ds_path and ds_path.exists():
-        # Create a temp dir with just this dataset file so load_jsonl_dataset works
-        import tempfile as _tf
-        tmp = Path(_tf.mkdtemp())
-        (tmp / ds_path.name).symlink_to(ds_path)
+    # Resolve dataset — look for clean.jsonl inside the dataset directory
+    safe_ds = _sanitize(dataset_choice) if dataset_choice else ""
+    ds_clean = DATASETS_DIR / safe_ds / "clean.jsonl" if safe_ds else None
+    if ds_clean and ds_clean.exists():
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "clean.jsonl").symlink_to(ds_clean)
         train_data_dir = tmp
     else:
-        # Fallback to processed dir
-        train_data_dir = PROCESSED_DIR
+        return JSONResponse({"error": f"Dataset '{dataset_choice}' not found or not cleaned yet."}, status_code=400)
 
     _train_queue = queue.Queue()
 

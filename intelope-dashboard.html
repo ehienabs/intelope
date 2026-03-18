@@ -621,9 +621,6 @@
       <div class="nav-item" onclick="navigate('ingest')">
         <span class="nav-icon">↓</span> Ingest
       </div>
-      <div class="nav-item" onclick="navigate('dataset')">
-        <span class="nav-icon">◫</span> Dataset
-      </div>
 
       <div class="nav-section-label" style="margin-top:8px">Model</div>
       <div class="nav-item" onclick="navigate('train')">
@@ -758,50 +755,59 @@
     <div id="page-ingest" class="page">
       <div class="page-header">
         <div class="page-title">Ingest Data</div>
-        <div class="page-subtitle">Add your personal data — all processing happens locally</div>
+        <div class="page-subtitle">Create a dataset, upload your data, and prepare it for training — all locally</div>
       </div>
 
-      <div class="grid-3" style="margin-bottom:28px">
-        <div class="source-card" onclick="showSource('notes')">
-          <div class="source-icon">📝</div>
-          <div class="source-name">Notes</div>
-          <div class="source-desc">Markdown files, Obsidian vaults, plaintext journals</div>
-          <div class="source-chunks" style="color:var(--muted)">Not connected</div>
+      <!-- Create or Select Dataset -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title">① Create or Select Dataset</div>
+        <div class="page-subtitle" style="margin-bottom:12px">Give your dataset a name to get started, or select an existing one.</div>
+        <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:16px">
+          <div class="field" style="flex:1; margin:0">
+            <label>New Dataset Name</label>
+            <input type="text" id="new-dataset-name" placeholder="e.g. personal-notes-v1">
+          </div>
+          <button class="btn btn-primary" onclick="createDataset()" style="height:38px">Create</button>
         </div>
-        <div class="source-card" onclick="showSource('documents')">
-          <div class="source-icon">📚</div>
-          <div class="source-name">Documents</div>
-          <div class="source-desc">PDF papers, EPUB books, research documents</div>
-          <div class="source-chunks" style="color:var(--muted)">Not connected</div>
-        </div>
-        <div class="source-card" onclick="showSource('browser')">
-          <div class="source-icon">🌐</div>
-          <div class="source-name">Browser History</div>
-          <div class="source-desc">Chrome, Firefox, or exported bookmarks HTML</div>
-          <div class="source-chunks" style="color:var(--muted)">Not connected</div>
-        </div>
-        <div class="source-card" onclick="showSource('chat')">
-          <div class="source-icon">💬</div>
-          <div class="source-name">Chat & Email</div>
-          <div class="source-desc">WhatsApp exports, Telegram JSON, MBOX email archives</div>
-          <div class="source-chunks" style="color:var(--muted)">Not connected</div>
-        </div>
-        <div class="source-card" style="opacity:0.5; cursor:default">
-          <div class="source-icon">📅</div>
-          <div class="source-name">Calendar</div>
-          <div class="source-desc">Coming soon — ICS calendar exports</div>
-          <div class="source-chunks" style="color:var(--muted)">Planned</div>
-        </div>
-        <div class="source-card" style="opacity:0.5; cursor:default">
-          <div class="source-icon">🔖</div>
-          <div class="source-name">Read Later</div>
-          <div class="source-desc">Coming soon — Pocket, Readwise, Instapaper</div>
-          <div class="source-chunks" style="color:var(--muted)">Planned</div>
-        </div>
+        <div id="dataset-list" style="font-size:13px; color:var(--muted)">Loading...</div>
       </div>
 
-      <div class="card">
-        <div class="card-title">Upload Files</div>
+      <!-- Upload Files -->
+      <div class="card" id="upload-card" style="margin-bottom:20px; opacity:0.5; pointer-events:none">
+        <div class="card-title">② Upload Files <span id="upload-dataset-badge" style="font-size:12px; color:var(--accent2); margin-left:8px"></span></div>
+        <div class="page-subtitle" style="margin-bottom:12px">Upload files into the selected dataset.</div>
+        <div class="grid-3" style="margin-bottom:16px">
+          <div class="source-card" style="cursor:default">
+            <div class="source-icon">📝</div>
+            <div class="source-name">Notes</div>
+            <div class="source-desc">.md .txt .org</div>
+          </div>
+          <div class="source-card" style="cursor:default">
+            <div class="source-icon">📚</div>
+            <div class="source-name">Documents</div>
+            <div class="source-desc">.pdf .epub</div>
+          </div>
+          <div class="source-card" style="cursor:default">
+            <div class="source-icon">💬</div>
+            <div class="source-name">Chat & Email</div>
+            <div class="source-desc">.json .mbox</div>
+          </div>
+          <div class="source-card" style="cursor:default">
+            <div class="source-icon">🌐</div>
+            <div class="source-name">Browser</div>
+            <div class="source-desc">.html</div>
+          </div>
+          <div class="source-card" style="opacity:0.5; cursor:default">
+            <div class="source-icon">📅</div>
+            <div class="source-name">Calendar</div>
+            <div class="source-desc">Coming soon</div>
+          </div>
+          <div class="source-card" style="opacity:0.5; cursor:default">
+            <div class="source-icon">🔖</div>
+            <div class="source-name">Read Later</div>
+            <div class="source-desc">Coming soon</div>
+          </div>
+        </div>
         <div style="display:flex; gap:12px; margin-bottom:12px">
           <div class="upload-zone" id="upload-zone" style="flex:1">
             <input type="file" multiple accept=".pdf,.epub,.md,.txt,.json,.mbox,.html,.csv" onchange="handleUpload(this)">
@@ -818,39 +824,18 @@
         </div>
         <div id="upload-list" style="margin-top:16px"></div>
       </div>
-    </div>
 
-    <!-- DATASET -->
-    <div id="page-dataset" class="page">
-      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start">
-        <div>
-          <div class="page-title">Dataset</div>
-          <div class="page-subtitle">Create named datasets from your ingested data for training</div>
-        </div>
-      </div>
-
-      <!-- Create Dataset -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-title">Create Dataset</div>
-        <div class="page-subtitle" style="margin-bottom:12px">Runs deduplication, PII scrubbing, and quality filtering on your ingested data, then saves the result as a named dataset.</div>
-        <div style="display:flex; gap:10px; align-items:flex-end">
-          <div class="field" style="flex:1; margin:0">
-            <label>Dataset Name</label>
-            <input type="text" id="new-dataset-name" placeholder="e.g. personal-notes-v1">
-          </div>
-          <button class="btn btn-primary" onclick="createDataset()" style="height:38px">Create Dataset</button>
-        </div>
-      </div>
-
-      <!-- Saved Datasets -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-title">Saved Datasets</div>
-        <div id="dataset-list" style="font-size:13px; color:var(--muted)">Loading...</div>
+      <!-- Clean Dataset -->
+      <div class="card" id="clean-card" style="margin-bottom:20px; opacity:0.5; pointer-events:none">
+        <div class="card-title">③ Clean & Prepare <span id="clean-dataset-badge" style="font-size:12px; color:var(--accent2); margin-left:8px"></span></div>
+        <div class="page-subtitle" style="margin-bottom:12px">Runs deduplication, PII scrubbing, and quality filtering on the uploaded data.</div>
+        <div id="clean-status" style="font-size:13px; color:var(--muted); margin-bottom:12px"></div>
+        <button class="btn btn-primary" id="btn-clean" onclick="cleanDataset()" style="width:100%">Run Cleaning Pipeline</button>
       </div>
 
       <!-- Browse Chunks -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-title">Browse Raw Chunks</div>
+      <div class="card" id="chunks-card" style="margin-bottom:20px; opacity:0.5; pointer-events:none">
+        <div class="card-title">Browse Chunks <span id="chunks-dataset-badge" style="font-size:12px; color:var(--accent2); margin-left:8px"></span></div>
         <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px">
           <input style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:7px; padding:9px 12px; font-family:var(--font-mono); font-size:13px; color:var(--text); outline:none" placeholder="Search chunks..." oninput="filterChunks(this.value)">
           <select style="background:var(--surface2); border:1px solid var(--border); border-radius:7px; padding:9px 12px; font-family:var(--font-mono); font-size:13px; color:var(--text); outline:none" onchange="filterType(this.value)">
@@ -881,7 +866,7 @@
             <div class="config-row">
               <div class="field" style="flex:2">
                 <label>Model Name</label>
-                <input type="text" id="cfg-output-name" placeholder="e.g. my-assistant-v1" value="">
+                <input type="text" id="cfg-output-name" placeholder="e.g. my-model-v1" value="">
               </div>
               <div class="field" style="flex:2">
                 <label>Dataset</label>
@@ -1019,7 +1004,7 @@
       <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start">
         <div>
           <div class="page-title">Chat</div>
-          <div class="page-subtitle">Ask your trained model anything about your personal data</div>
+          <div class="page-subtitle">Talk to your model</div>
         </div>
         <div style="display:flex; gap:10px; align-items:center">
           <span style="font-size:12px; color:var(--muted)">Model:</span>
@@ -1115,7 +1100,7 @@ function filterType(type) {
   renderChunks(filteredChunks);
 }
 
-// Initialize dataset on first render
+// Initialize dataset
 document.addEventListener('DOMContentLoaded', () => renderChunks(allChunks));
 
 // Model selection
@@ -1130,15 +1115,16 @@ async function fetchDatasets() {
     const r = await fetch('/api/datasets');
     const data = await r.json();
     select.innerHTML = '';
-    if (data.datasets && data.datasets.length) {
-      data.datasets.forEach(d => {
+    const ready = (data.datasets || []).filter(d => d.ready);
+    if (ready.length) {
+      ready.forEach(d => {
         const opt = document.createElement('option');
         opt.value = d.name;
-        opt.textContent = d.name + ' (' + d.records + ' records)';
+        opt.textContent = d.name + ' (' + d.clean_records + ' records)';
         select.appendChild(opt);
       });
     } else {
-      select.innerHTML = '<option value="" disabled>No datasets — create one in the Dataset tab</option>';
+      select.innerHTML = '<option value="" disabled>No cleaned datasets — create and clean one in Ingest</option>';
     }
   } catch(e) {
     select.innerHTML = '<option value="" disabled>Could not load datasets</option>';
@@ -1379,8 +1365,40 @@ function insertSuggestion(el) {
   document.getElementById('chat-input').value = el.textContent;
 }
 
-// File upload — sends files to backend API
+// ─── Active dataset tracking ──────────────────────
+let activeDataset = null;
+
+function selectDataset(name) {
+  activeDataset = name;
+  // Enable upload and clean cards
+  const uploadCard = document.getElementById('upload-card');
+  const cleanCard = document.getElementById('clean-card');
+  const chunksCard = document.getElementById('chunks-card');
+  uploadCard.style.opacity = '1';
+  uploadCard.style.pointerEvents = 'auto';
+  cleanCard.style.opacity = '1';
+  cleanCard.style.pointerEvents = 'auto';
+  chunksCard.style.opacity = '1';
+  chunksCard.style.pointerEvents = 'auto';
+  // Update badges
+  document.getElementById('upload-dataset-badge').textContent = '→ ' + name;
+  document.getElementById('clean-dataset-badge').textContent = '→ ' + name;
+  document.getElementById('chunks-dataset-badge').textContent = '→ ' + name;
+  // Highlight the selected dataset
+  document.querySelectorAll('.dataset-item').forEach(el => {
+    el.style.borderColor = el.dataset.name === name ? 'var(--accent2)' : 'var(--border)';
+  });
+  // Clear previous upload list
+  document.getElementById('upload-list').innerHTML = '';
+  // Load chunks for this dataset
+  refreshChunks();
+  // Update clean status
+  updateCleanStatus();
+}
+
+// File upload — sends files to the active dataset
 function handleUpload(input) {
+  if (!activeDataset) { alert('Select or create a dataset first.'); return; }
   const list = document.getElementById('upload-list');
   const files = Array.from(input.files);
   if (!files.length) return;
@@ -1404,7 +1422,7 @@ function handleUpload(input) {
     list.appendChild(div);
   });
 
-  fetch('/api/upload', { method: 'POST', body: formData })
+  fetch('/api/datasets/' + encodeURIComponent(activeDataset) + '/upload', { method: 'POST', body: formData })
     .then(r => r.json())
     .then(data => {
       (data.results || []).forEach(r => {
@@ -1423,9 +1441,10 @@ function handleUpload(input) {
           el.innerHTML += `<div style="color:var(--accent2); font-size:11px; margin-top:4px">${chunks} chunks ingested</div>`;
         }
       });
-      // Refresh dashboard stats
       refreshStatus();
+      refreshDatasetList();
       refreshChunks();
+      updateCleanStatus();
     })
     .catch(err => {
       console.error('Upload failed:', err);
@@ -1437,15 +1456,11 @@ function handleUpload(input) {
     });
 }
 
-// Create named dataset via API
+// Create a new empty dataset
 async function createDataset() {
   const nameInput = document.getElementById('new-dataset-name');
   const name = nameInput.value.trim();
   if (!name) { alert('Enter a name for the dataset.'); return; }
-
-  const btn = event.currentTarget;
-  btn.disabled = true;
-  btn.textContent = 'Creating...';
 
   try {
     const r = await fetch('/api/datasets/create', {
@@ -1454,31 +1469,84 @@ async function createDataset() {
       body: JSON.stringify({name: name})
     });
     const data = await r.json();
-    btn.disabled = false;
-    btn.textContent = 'Create Dataset';
     if (data.error) {
       alert(data.error);
     } else {
-      alert('Dataset "' + data.name + '" created: ' + data.output_records + ' records (' + data.removed_quality + ' low-quality, ' + data.removed_duplicates + ' duplicates removed, ' + data.pii_scrubbed + ' PII scrubbed)');
       nameInput.value = '';
+      await refreshDatasetList();
+      selectDataset(data.name);
+    }
+  } catch(e) {
+    alert('Failed to create dataset — check the server logs.');
+  }
+}
+
+async function deleteDataset(name) {
+  if (!confirm('Delete dataset "' + name + '" and all its data?')) return;
+  try {
+    await fetch('/api/datasets/' + encodeURIComponent(name), {method: 'DELETE'});
+    if (activeDataset === name) {
+      activeDataset = null;
+      document.getElementById('upload-card').style.opacity = '0.5';
+      document.getElementById('upload-card').style.pointerEvents = 'none';
+      document.getElementById('clean-card').style.opacity = '0.5';
+      document.getElementById('clean-card').style.pointerEvents = 'none';
+      document.getElementById('chunks-card').style.opacity = '0.5';
+      document.getElementById('chunks-card').style.pointerEvents = 'none';
+      document.getElementById('upload-dataset-badge').textContent = '';
+      document.getElementById('clean-dataset-badge').textContent = '';
+      document.getElementById('chunks-dataset-badge').textContent = '';
+    }
+    refreshDatasetList();
+    fetchDatasets();
+    refreshStatus();
+  } catch(e) { /* ignore */ }
+}
+
+async function cleanDataset() {
+  if (!activeDataset) { alert('Select a dataset first.'); return; }
+  const btn = document.getElementById('btn-clean');
+  btn.disabled = true;
+  btn.textContent = 'Cleaning...';
+
+  try {
+    const r = await fetch('/api/datasets/' + encodeURIComponent(activeDataset) + '/clean', {method: 'POST'});
+    const data = await r.json();
+    btn.disabled = false;
+    btn.textContent = 'Run Cleaning Pipeline';
+    if (data.error) {
+      alert(data.error);
+    } else {
+      document.getElementById('clean-status').innerHTML =
+        '<span style="color:var(--accent2)">✓</span> ' + data.output_records + ' records ready (' +
+        data.removed_quality + ' low-quality, ' + data.removed_duplicates + ' duplicates removed, ' +
+        data.pii_scrubbed + ' PII scrubbed)';
       refreshDatasetList();
       fetchDatasets();
       refreshStatus();
     }
   } catch(e) {
     btn.disabled = false;
-    btn.textContent = 'Create Dataset';
-    alert('Failed to create dataset — check the server logs.');
+    btn.textContent = 'Run Cleaning Pipeline';
+    alert('Cleaning failed — check the server logs.');
   }
 }
 
-async function deleteDataset(name) {
-  if (!confirm('Delete dataset "' + name + '"?')) return;
-  try {
-    await fetch('/api/datasets/' + encodeURIComponent(name), {method: 'DELETE'});
-    refreshDatasetList();
-    fetchDatasets();
-  } catch(e) { /* ignore */ }
+function updateCleanStatus() {
+  if (!activeDataset) return;
+  fetch('/api/datasets')
+    .then(r => r.json())
+    .then(data => {
+      const ds = (data.datasets || []).find(d => d.name === activeDataset);
+      const el = document.getElementById('clean-status');
+      if (ds && ds.clean_records > 0) {
+        el.innerHTML = '<span style="color:var(--accent2)">✓</span> ' + ds.clean_records + ' clean records ready for training';
+      } else if (ds && ds.chunks > 0) {
+        el.innerHTML = ds.chunks + ' raw chunks available — click below to clean';
+      } else {
+        el.innerHTML = 'Upload files first, then clean';
+      }
+    });
 }
 
 async function refreshDatasetList() {
@@ -1491,12 +1559,13 @@ async function refreshDatasetList() {
       return;
     }
     el.innerHTML = data.datasets.map(d => `
-      <div class="chunk-card" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+      <div class="chunk-card dataset-item" data-name="${d.name}" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; cursor:pointer; border: 1px solid ${activeDataset === d.name ? 'var(--accent2)' : 'var(--border)'}; border-radius:8px; padding:12px" onclick="selectDataset('${d.name}')">
         <div>
           <span style="font-weight:600; color:var(--text)">${d.name}</span>
-          <span style="color:var(--muted); margin-left:8px">${d.records} records</span>
+          <span style="color:var(--muted); margin-left:8px">${d.files} files · ${d.chunks} chunks</span>
+          ${d.ready ? '<span style="color:var(--accent2); margin-left:8px">✓ ' + d.clean_records + ' clean</span>' : ''}
         </div>
-        <button class="btn btn-secondary" style="font-size:11px; padding:4px 10px; color:var(--danger); border-color:rgba(247,106,106,0.25)" onclick="deleteDataset('${d.name}')">Delete</button>
+        <button class="btn btn-secondary" style="font-size:11px; padding:4px 10px; color:var(--danger); border-color:rgba(247,106,106,0.25)" onclick="event.stopPropagation(); deleteDataset('${d.name}')">Delete</button>
       </div>
     `).join('');
   } catch(e) {
@@ -1556,9 +1625,10 @@ function refreshStatus() {
     });
 }
 
-// Refresh dataset chunks from API
+// Refresh dataset chunks from API (per-dataset)
 function refreshChunks() {
-  fetch('/api/chunks')
+  if (!activeDataset) return;
+  fetch('/api/datasets/' + encodeURIComponent(activeDataset) + '/chunks')
     .then(r => r.json())
     .then(data => {
       allChunks = (data.chunks || []).map(c => ({
@@ -1574,7 +1644,6 @@ function refreshChunks() {
 // Load real data on page load
 document.addEventListener('DOMContentLoaded', () => {
   refreshStatus();
-  refreshChunks();
   fetchModels();
   fetchDatasets();
   refreshDatasetList();
