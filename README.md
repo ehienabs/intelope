@@ -9,6 +9,31 @@ Just you, your notes, and a model that actually knows your world.
 
 ## Quickstart
 
+### 0. Create a virtual environment
+
+**macOS / Linux:**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+**Windows (PowerShell):**
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+**Windows (CMD):**
+
+```cmd
+python -m venv .venv
+.venv\Scripts\activate.bat
+```
+
+### Install Intelope
+
 ```bash
 pip install git+https://github.com/ehienabs/intelope.git
 intelope start
