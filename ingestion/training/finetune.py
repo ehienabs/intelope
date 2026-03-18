@@ -293,12 +293,14 @@ def _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
     from trl import SFTTrainer, SFTConfig
     import torch
 
+    use_fp16 = torch.cuda.is_available()
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.float16 if use_fp16 else torch.float32,
         device_map="auto",
     )
 
@@ -325,7 +327,7 @@ def _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
             gradient_accumulation_steps=4,
             num_train_epochs=epochs,
             learning_rate=lr,
-            fp16=True,
+            fp16=use_fp16,
             logging_steps=10,
             output_dir=str(output_dir / "checkpoints"),
             save_strategy="epoch",
