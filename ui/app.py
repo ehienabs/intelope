@@ -109,9 +109,15 @@ def get_status():
                     except json.JSONDecodeError:
                         continue
 
-    # Count models
+    # Count models — only directories with adapter_config.json are real models
     models_dir = PROJECT_ROOT / "models"
-    model_count = len(list(models_dir.glob("*"))) if models_dir.exists() else 0
+    model_count = 0
+    model_list = []
+    if models_dir.exists():
+        for d in models_dir.iterdir():
+            if d.is_dir() and (d / "adapter_config.json").exists():
+                model_count += 1
+                model_list.append(d.name)
 
     # Serialize source_counts (sets aren't JSON-serializable)
     sources = {}
@@ -235,6 +241,70 @@ def stop_training():
     from ingestion.training.finetune import request_stop
     request_stop()
     return {"status": "stop_requested"}
+
+
+# ── Chat ──────────────────────────────────────────────────────────────────────
+_chat_model = None
+_chat_tokenizer = None
+_chat_backend = None
+_chat_history = []
+
+
+@app.get("/api/models")
+def list_models():
+    """Return available trained models."""
+    models_dir = PROJECT_ROOT / "models"
+    models = []
+    if models_dir.exists():
+        for d in models_dir.iterdir():
+            if d.is_dir() and (d / "adapter_config.json").exists():
+                models.append({"name": d.name, "path": str(d)})
+    return {"models": models}
+
+
+@app.post("/api/chat/load")
+async def load_chat_model(request: Request):
+    """Load a trained model for chat."""
+    global _chat_model, _chat_tokenizer, _chat_backend, _chat_history
+    body = await request.json()
+    model_name = body.get("model", "latest")
+    model_path = PROJECT_ROOT / "models" / model_name
+
+    if not model_path.exists() or not (model_path / "adapter_config.json").exists():
+        return JSONResponse({"error": f"Model not found: {model_name}"}, status_code=404)
+
+    from ingestion.training.inference import load_model, DEFAULT_SYSTEM
+    _chat_model, _chat_tokenizer, _chat_backend = load_model(model_path)
+    _chat_history = [{"role": "system", "content": DEFAULT_SYSTEM}]
+    return {"status": "loaded", "model": model_name, "backend": _chat_backend}
+
+
+@app.post("/api/chat")
+async def chat_message(request: Request):
+    """Send a message and get a response from the loaded model."""
+    global _chat_history
+    if _chat_model is None:
+        return JSONResponse({"error": "No model loaded. Load a model first."}, status_code=400)
+
+    body = await request.json()
+    message = body.get("message", "").strip()
+    if not message:
+        return JSONResponse({"error": "Empty message."}, status_code=400)
+
+    from ingestion.training.inference import generate
+    _chat_history.append({"role": "user", "content": message})
+    reply = generate(_chat_model, _chat_tokenizer, _chat_history, _chat_backend)
+    _chat_history.append({"role": "assistant", "content": reply})
+    return {"reply": reply}
+
+
+@app.post("/api/chat/clear")
+def clear_chat_history():
+    """Clear chat history."""
+    global _chat_history
+    from ingestion.training.inference import DEFAULT_SYSTEM
+    _chat_history = [{"role": "system", "content": DEFAULT_SYSTEM}]
+    return {"status": "cleared"}
 
 
 def launch(host: str = "127.0.0.1", port: int = 7860):
