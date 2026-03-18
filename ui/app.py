@@ -18,6 +18,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
 CLEAN_DIR = DATA_DIR / "clean"
 UPLOAD_DIR = DATA_DIR / "uploads"
+DATASETS_DIR = DATA_DIR / "datasets"
 
 app = FastAPI(title="Intelope")
 
@@ -163,6 +164,52 @@ def run_clean():
     return stats
 
 
+@app.get("/api/datasets")
+def list_datasets():
+    """Return available named datasets for training."""
+    datasets = []
+    DATASETS_DIR.mkdir(parents=True, exist_ok=True)
+    for f in sorted(DATASETS_DIR.glob("*.jsonl")):
+        count = sum(1 for line in f.open() if line.strip())
+        datasets.append({"name": f.stem, "records": count})
+    return {"datasets": datasets}
+
+
+@app.post("/api/datasets/create")
+async def create_dataset(request: Request):
+    """Run the cleaning pipeline and save as a named dataset."""
+    if not PROCESSED_DIR.exists() or not list(PROCESSED_DIR.glob("*.jsonl")):
+        return JSONResponse({"error": "No processed data found. Ingest files first."}, status_code=400)
+
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"error": "Dataset name is required."}, status_code=400)
+
+    import re as _re
+    safe_name = _re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+
+    DATASETS_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = DATASETS_DIR / f"{safe_name}.jsonl"
+
+    from pipeline.clean import run_pipeline
+    stats = run_pipeline(PROCESSED_DIR, output_path)
+    stats["name"] = safe_name
+    return stats
+
+
+@app.delete("/api/datasets/{name}")
+def delete_dataset(name: str):
+    """Delete a named dataset."""
+    import re as _re
+    safe_name = _re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+    path = DATASETS_DIR / f"{safe_name}.jsonl"
+    if not path.exists():
+        return JSONResponse({"error": f"Dataset not found: {name}"}, status_code=404)
+    path.unlink()
+    return {"status": "deleted", "name": safe_name}
+
+
 # ── Training state ────────────────────────────────────────────────────────────
 _train_thread: threading.Thread = None
 _train_queue: queue.Queue = None
@@ -184,6 +231,25 @@ async def start_training(request: Request):
     lr = float(body.get("lr", 2e-4))
     batch_size = int(body.get("batch_size", 2))
     max_seq_length = int(body.get("max_seq_length", 2048))
+    output_name = body.get("output_name", "latest").strip() or "latest"
+    # Sanitize output name — allow only alphanumeric, hyphens, underscores
+    import re as _re
+    output_name = _re.sub(r'[^a-zA-Z0-9_-]', '_', output_name)
+    dataset_choice = body.get("dataset", "").strip()
+
+    # Resolve dataset file
+    import re as _re
+    safe_ds = _re.sub(r'[^a-zA-Z0-9_-]', '_', dataset_choice) if dataset_choice else ""
+    ds_path = DATASETS_DIR / f"{safe_ds}.jsonl" if safe_ds else None
+    if ds_path and ds_path.exists():
+        # Create a temp dir with just this dataset file so load_jsonl_dataset works
+        import tempfile as _tf
+        tmp = Path(_tf.mkdtemp())
+        (tmp / ds_path.name).symlink_to(ds_path)
+        train_data_dir = tmp
+    else:
+        # Fallback to processed dir
+        train_data_dir = PROCESSED_DIR
 
     _train_queue = queue.Queue()
 
@@ -195,13 +261,14 @@ async def start_training(request: Request):
         try:
             run_finetune(
                 base_model=model,
-                data_dir=PROCESSED_DIR,
+                data_dir=train_data_dir,
                 output_dir=PROJECT_ROOT / "models",
                 epochs=epochs,
                 lora_r=lora_r,
                 learning_rate=lr,
                 batch_size=batch_size,
                 max_seq_length=max_seq_length,
+                output_name=output_name,
             )
         except Exception as e:
             _train_queue.put({"type": "error", "message": str(e)})

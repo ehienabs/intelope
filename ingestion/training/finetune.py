@@ -199,6 +199,7 @@ def run_finetune(
     batch_size: int = 2,
     max_seq_length: int = 2048,
     use_unsloth: bool = True,
+    output_name: str = "latest",
 ):
     """
     Run LoRA fine-tuning. Tries unsloth first for speed; falls back to transformers.
@@ -227,17 +228,17 @@ def run_finetune(
     if use_unsloth:
         try:
             _train_unsloth(model_name, dataset, output_dir, epochs, lora_r,
-                           lora_alpha, learning_rate, batch_size, max_seq_length)
+                           lora_alpha, learning_rate, batch_size, max_seq_length, output_name)
             return
         except ImportError:
             print("unsloth not installed, falling back to transformers")
 
     _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
-                        lora_alpha, learning_rate, batch_size, max_seq_length)
+                        lora_alpha, learning_rate, batch_size, max_seq_length, output_name)
 
 
 def _train_unsloth(model_name, dataset, output_dir, epochs, lora_r,
-                   lora_alpha, lr, batch_size, max_seq_length):
+                   lora_alpha, lr, batch_size, max_seq_length, output_name="latest"):
     """Fast path: train with unsloth (2-5x faster, lower VRAM)."""
     from unsloth import FastLanguageModel
     from trl import SFTTrainer, SFTConfig
@@ -280,13 +281,14 @@ def _train_unsloth(model_name, dataset, output_dir, epochs, lora_r,
         callbacks=[ETACallback()],
     )
     trainer.train()
-    model.save_pretrained(str(output_dir / "latest"))
-    tokenizer.save_pretrained(str(output_dir / "latest"))
-    _emit({"type": "log", "message": f"✓ Model saved to {output_dir / 'latest'}"})
+    save_path = output_dir / output_name
+    model.save_pretrained(str(save_path))
+    tokenizer.save_pretrained(str(save_path))
+    _emit({"type": "log", "message": f"✓ Model saved to {save_path}"})
 
 
 def _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
-                        lora_alpha, lr, batch_size, max_seq_length):
+                        lora_alpha, lr, batch_size, max_seq_length, output_name="latest"):
     """Fallback: standard transformers + peft LoRA."""
     from transformers import AutoTokenizer, AutoModelForCausalLM
     from peft import LoraConfig, get_peft_model, TaskType
@@ -335,7 +337,8 @@ def _train_transformers(model_name, dataset, output_dir, epochs, lora_r,
         callbacks=[ETACallback()],
     )
     trainer.train()
-    model.save_pretrained(str(output_dir / "latest"))
-    tokenizer.save_pretrained(str(output_dir / "latest"))
-    _emit({"type": "log", "message": f"✓ Model saved to {output_dir / 'latest'}"})
-    _emit({"type": "saved", "path": str(output_dir / "latest")})
+    save_path = output_dir / output_name
+    model.save_pretrained(str(save_path))
+    tokenizer.save_pretrained(str(save_path))
+    _emit({"type": "log", "message": f"✓ Model saved to {save_path}"})
+    _emit({"type": "saved", "path": str(save_path)})

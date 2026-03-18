@@ -825,16 +825,33 @@
       <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start">
         <div>
           <div class="page-title">Dataset</div>
-          <div class="page-subtitle">Browse and inspect your training data</div>
-        </div>
-        <div style="display:flex; gap:10px">
-          <button class="btn btn-secondary" onclick="runClean()">⟳ Re-run cleaning</button>
-          <button class="btn btn-primary">↓ Export JSONL</button>
+          <div class="page-subtitle">Create named datasets from your ingested data for training</div>
         </div>
       </div>
 
+      <!-- Create Dataset -->
       <div class="card" style="margin-bottom:20px">
-        <div style="display:flex; gap:12px; align-items:center">
+        <div class="card-title">Create Dataset</div>
+        <div class="page-subtitle" style="margin-bottom:12px">Runs deduplication, PII scrubbing, and quality filtering on your ingested data, then saves the result as a named dataset.</div>
+        <div style="display:flex; gap:10px; align-items:flex-end">
+          <div class="field" style="flex:1; margin:0">
+            <label>Dataset Name</label>
+            <input type="text" id="new-dataset-name" placeholder="e.g. personal-notes-v1">
+          </div>
+          <button class="btn btn-primary" onclick="createDataset()" style="height:38px">Create Dataset</button>
+        </div>
+      </div>
+
+      <!-- Saved Datasets -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title">Saved Datasets</div>
+        <div id="dataset-list" style="font-size:13px; color:var(--muted)">Loading...</div>
+      </div>
+
+      <!-- Browse Chunks -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title">Browse Raw Chunks</div>
+        <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px">
           <input style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:7px; padding:9px 12px; font-family:var(--font-mono); font-size:13px; color:var(--text); outline:none" placeholder="Search chunks..." oninput="filterChunks(this.value)">
           <select style="background:var(--surface2); border:1px solid var(--border); border-radius:7px; padding:9px 12px; font-family:var(--font-mono); font-size:13px; color:var(--text); outline:none" onchange="filterType(this.value)">
             <option value="">All types</option>
@@ -844,10 +861,9 @@
             <option value="browser">Browser</option>
           </select>
         </div>
-      </div>
-
-      <div id="chunk-list">
-        <!-- Populated by JS -->
+        <div id="chunk-list">
+          <!-- Populated by JS -->
+        </div>
       </div>
     </div>
 
@@ -860,6 +876,22 @@
 
       <div class="train-layout">
         <div>
+          <div class="card" style="margin-bottom:20px">
+            <div class="card-title">Training Setup</div>
+            <div class="config-row">
+              <div class="field" style="flex:2">
+                <label>Model Name</label>
+                <input type="text" id="cfg-output-name" placeholder="e.g. my-assistant-v1" value="">
+              </div>
+              <div class="field" style="flex:2">
+                <label>Dataset</label>
+                <select id="cfg-dataset">
+                  <option value="clean">Loading...</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <div class="card" style="margin-bottom:20px">
             <div class="card-title">Base Model</div>
             <div class="model-card selected" onclick="selectModel(this, 'smollm2-1.7b')">
@@ -1092,6 +1124,27 @@ function selectModel(el, id) {
   el.classList.add('selected');
 }
 
+async function fetchDatasets() {
+  const select = document.getElementById('cfg-dataset');
+  try {
+    const r = await fetch('/api/datasets');
+    const data = await r.json();
+    select.innerHTML = '';
+    if (data.datasets && data.datasets.length) {
+      data.datasets.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.name;
+        opt.textContent = d.name + ' (' + d.records + ' records)';
+        select.appendChild(opt);
+      });
+    } else {
+      select.innerHTML = '<option value="" disabled>No datasets — create one in the Dataset tab</option>';
+    }
+  } catch(e) {
+    select.innerHTML = '<option value="" disabled>Could not load datasets</option>';
+  }
+}
+
 // Training — real-time via SSE
 let trainingEventSource = null;
 
@@ -1100,6 +1153,8 @@ function getTrainConfig() {
   const modelMap = {'SmolLM2-1.7B':'smollm2-1.7b','SmolLM2-360M':'smollm2-360m','Phi-3-mini':'phi3-mini'};
   return {
     model: modelMap[selectedModel?.textContent?.trim()] || 'smollm2-1.7b',
+    output_name: document.getElementById('cfg-output-name').value.trim() || 'latest',
+    dataset: document.getElementById('cfg-dataset').value || 'clean',
     epochs: parseInt(document.getElementById('cfg-epochs').value) || 3,
     lora_r: parseInt(document.getElementById('cfg-lora-r').value) || 16,
     lora_alpha: parseInt(document.getElementById('cfg-lora-alpha').value) || 32,
@@ -1141,7 +1196,7 @@ async function startTraining() {
   setTrainButtons(true);
   document.getElementById('train-log').innerHTML =
     '<span class="log-line log-info" id="cursor-line">_</span>';
-  trainLog('Starting training with ' + cfg.model + ' for ' + cfg.epochs + ' epochs...');
+  trainLog('Training "' + cfg.output_name + '" with ' + cfg.model + ' on dataset "' + cfg.dataset + '" for ' + cfg.epochs + ' epochs...');
 
   const res = await fetch('/api/train/start', {
     method: 'POST',
@@ -1168,6 +1223,7 @@ async function startTraining() {
 function finishTraining() {
   if (trainingEventSource) { trainingEventSource.close(); trainingEventSource = null; }
   setTrainButtons(false);
+  fetchModels();
 }
 
 async function stopTraining() {
@@ -1381,29 +1437,71 @@ function handleUpload(input) {
     });
 }
 
-// Run cleaning pipeline via API
-function runClean() {
+// Create named dataset via API
+async function createDataset() {
+  const nameInput = document.getElementById('new-dataset-name');
+  const name = nameInput.value.trim();
+  if (!name) { alert('Enter a name for the dataset.'); return; }
+
   const btn = event.currentTarget;
   btn.disabled = true;
-  btn.textContent = '⟳ Cleaning...';
+  btn.textContent = 'Creating...';
 
-  fetch('/api/clean', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      btn.disabled = false;
-      btn.textContent = '⟳ Re-run cleaning';
-      if (data.error) {
-        alert(data.error);
-      } else {
-        alert(`Cleaning done: ${data.output_records} chunks kept (${data.removed_quality} low-quality, ${data.removed_duplicates} duplicates removed, ${data.pii_scrubbed} PII scrubbed)`);
-        refreshStatus();
-      }
-    })
-    .catch(() => {
-      btn.disabled = false;
-      btn.textContent = '⟳ Re-run cleaning';
-      alert('Cleaning failed — check the server logs.');
+  try {
+    const r = await fetch('/api/datasets/create', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name})
     });
+    const data = await r.json();
+    btn.disabled = false;
+    btn.textContent = 'Create Dataset';
+    if (data.error) {
+      alert(data.error);
+    } else {
+      alert('Dataset "' + data.name + '" created: ' + data.output_records + ' records (' + data.removed_quality + ' low-quality, ' + data.removed_duplicates + ' duplicates removed, ' + data.pii_scrubbed + ' PII scrubbed)');
+      nameInput.value = '';
+      refreshDatasetList();
+      fetchDatasets();
+      refreshStatus();
+    }
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Create Dataset';
+    alert('Failed to create dataset — check the server logs.');
+  }
+}
+
+async function deleteDataset(name) {
+  if (!confirm('Delete dataset "' + name + '"?')) return;
+  try {
+    await fetch('/api/datasets/' + encodeURIComponent(name), {method: 'DELETE'});
+    refreshDatasetList();
+    fetchDatasets();
+  } catch(e) { /* ignore */ }
+}
+
+async function refreshDatasetList() {
+  const el = document.getElementById('dataset-list');
+  try {
+    const r = await fetch('/api/datasets');
+    const data = await r.json();
+    if (!data.datasets || !data.datasets.length) {
+      el.innerHTML = '<div style="padding:12px; text-align:center; color:var(--muted)">No datasets yet. Create one above.</div>';
+      return;
+    }
+    el.innerHTML = data.datasets.map(d => `
+      <div class="chunk-card" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+        <div>
+          <span style="font-weight:600; color:var(--text)">${d.name}</span>
+          <span style="color:var(--muted); margin-left:8px">${d.records} records</span>
+        </div>
+        <button class="btn btn-secondary" style="font-size:11px; padding:4px 10px; color:var(--danger); border-color:rgba(247,106,106,0.25)" onclick="deleteDataset('${d.name}')">Delete</button>
+      </div>
+    `).join('');
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--muted)">Could not load datasets.</div>';
+  }
 }
 
 // Refresh dashboard status from API
@@ -1478,6 +1576,8 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshStatus();
   refreshChunks();
   fetchModels();
+  fetchDatasets();
+  refreshDatasetList();
 });
 
 // Blinking cursor in terminal
